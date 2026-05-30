@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.UserAgreementSignMapper">
+
+    <!-- 查询用户已签署的协议列表 -->
+    <select id="selectByUserId" resultType="com.loan.entity.UserAgreementSign">
+        SELECT
+            sign_id, user_id, agreement_id, agreement_type, agreement_version,
+            signature_image_url, sign_time, ip_address, device_info, is_valid, create_time
+        FROM user_agreement_sign
+        WHERE user_id = #{userId} AND is_valid = 1
+        ORDER BY sign_time DESC
+    </select>
+
+    <!-- 检查用户是否已签署指定协议 -->
+    <select id="selectByUserAndAgreement" resultType="com.loan.entity.UserAgreementSign">
+        SELECT
+            sign_id, user_id, agreement_id, agreement_type, agreement_version,
+            signature_image_url, sign_time, ip_address, device_info, is_valid, create_time
+        FROM user_agreement_sign
+        WHERE user_id = #{userId} AND agreement_id = #{agreementId} AND is_valid = 1
+            LIMIT 1
+    </select>
+
+    <!-- 检查用户是否已签署某类型协议的当前版本 -->
+    <select id="selectCurrentVersionSign" resultType="com.loan.entity.UserAgreementSign">
+        SELECT
+            s.sign_id, s.user_id, s.agreement_id, s.agreement_type, s.agreement_version,
+            s.signature_image_url, s.sign_time, s.ip_address, s.device_info, s.is_valid, s.create_time
+        FROM user_agreement_sign s
+                 INNER JOIN user_agreement a ON s.agreement_id = a.agreement_id
+        WHERE s.user_id = #{userId}
+          AND a.agreement_type = #{agreementType}
+          AND a.is_current = 1
+          AND s.is_valid = 1
+            LIMIT 1
+    </select>
+
+    <!-- 插入签署记录 -->
+    <insert id="insert" parameterType="com.loan.entity.UserAgreementSign" useGeneratedKeys="true" keyProperty="signId">
+        INSERT INTO user_agreement_sign (
+            user_id, agreement_id, agreement_type, agreement_version,
+            signature_image_url, sign_time, ip_address, device_info, is_valid, create_time
+        ) VALUES (
+                     #{userId}, #{agreementId}, #{agreementType}, #{agreementVersion},
+                     #{signatureImageUrl}, #{signTime}, #{ipAddress}, #{deviceInfo}, #{isValid}, NOW()
+                 )
+    </insert>
+
+    <!-- 撤销签署记录 -->
+    <update id="updateIsValidToNo">
+        UPDATE user_agreement_sign
+        SET is_valid = 0
+        WHERE sign_id = #{signId}
+    </update>
+
+</mapper>

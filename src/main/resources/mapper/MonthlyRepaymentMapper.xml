@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.MonthlyRepaymentMapper">
+    <!-- 批量保存每月还款明细 -->
+    <insert id="batchInsert">
+        INSERT INTO monthly_repayment (
+        repayment_id, plan_id, term, principal, interest,
+        repayment_amount, due_date, repayment_status
+        ) VALUES
+        <foreach collection="list" item="item" separator=",">
+            (
+            #{item.repaymentId}, #{item.planId}, #{item.term}, #{item.principal}, #{item.interest},
+            #{item.repaymentAmount}, #{item.dueDate}, #{item.repaymentStatus}
+            )
+        </foreach>
+    </insert>
+
+    <!-- 根据ID查询还款明细 -->
+    <select id="selectById" resultType="com.loan.entity.MonthlyRepayment">
+        SELECT
+            repayment_id, plan_id, term, principal, interest, repayment_amount,
+            due_date, repayment_status, repayment_time
+        FROM monthly_repayment
+        WHERE repayment_id = #{repaymentId}
+    </select>
+
+    <select id="selectByPlanId" resultType="com.loan.entity.vo.MonthlyRepaymentVO">
+        SELECT
+            mr.repayment_id,
+            mr.plan_id,
+            mr.term,  -- 期数
+            mr.principal,  -- 当期本金
+            mr.interest,  -- 当期利息
+            mr.repayment_amount,  -- 当期总还款额
+            mr.due_date,  -- 到期还款日
+            mr.repayment_status,  -- 还款状态
+            mr.repayment_time,  -- 实际还款时间
+            rp.application_id,  -- 关联的贷款申请ID
+            rp.user_id  -- 关联的用户ID（可选）
+        FROM monthly_repayment mr
+                 -- 关联还款计划主表，获取更多上下文信息（如申请ID、用户ID）
+                 LEFT JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        -- 筛选条件：指定还款计划ID
+        WHERE mr.plan_id = #{planId}
+        -- 按期数升序排列（从第1期到最后一期）
+        ORDER BY mr.term ASC
+    </select>
+
+    <!-- 更新还款状态 -->
+    <update id="updateRepaymentStatus">
+        UPDATE monthly_repayment
+        SET repayment_status = #{status}, repayment_time = #{repaymentTime}
+        WHERE repayment_id = #{repaymentId}
+    </update>
+
+    <select id="selectByStatus" resultType="com.loan.entity.MonthlyRepayment">
+        SELECT
+            repayment_id, plan_id, term, principal, interest, repayment_amount,
+            due_date, repayment_status, repayment_time
+        FROM monthly_repayment
+        WHERE repayment_status = #{status}
+    </select>
+
+    <select id="selectOverdueByUserId" resultType="com.loan.entity.MonthlyRepayment">
+        SELECT DISTINCT
+            mr.repayment_id, mr.plan_id, mr.term, mr.principal, mr.interest,
+            mr.repayment_amount, mr.due_date, mr.repayment_status, mr.repayment_time
+        FROM monthly_repayment mr
+                 INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE rp.user_id = #{userId}
+          AND mr.repayment_status = 'overdue'
+    </select>
+</mapper>

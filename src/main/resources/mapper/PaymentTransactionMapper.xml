@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.PaymentTransactionMapper">
+
+    <insert id="insert">
+        INSERT INTO payment_transaction (transaction_id, order_no, user_id, pool_card_id, amount, type, direction, status)
+        VALUES (#{transactionId}, #{orderNo}, #{userId}, #{poolCardId}, #{amount}, #{type}, #{direction}, #{status})
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE payment_transaction
+        SET status = #{status},
+            error_code = #{errorCode},
+            error_message = #{errorMessage},
+            balance_before = #{balanceBefore},
+            balance_after = #{balanceAfter},
+            complete_time = NOW()
+        WHERE transaction_id = #{transactionId}
+    </update>
+
+    <select id="selectByTransactionId" resultType="com.loan.entity.PaymentTransaction">
+        SELECT * FROM payment_transaction WHERE transaction_id = #{transactionId}
+    </select>
+
+</mapper>

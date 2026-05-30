@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.UserBankCardMapper">
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_bank_card (user_id, pool_card_id, card_number, alias_name, is_default, bind_status)
+        VALUES (#{userId}, #{poolCardId}, #{cardNumber}, #{aliasName}, #{isDefault}, #{bindStatus})
+    </insert>
+
+    <select id="selectByUserId" resultType="com.loan.entity.UserBankCard">
+        SELECT * FROM user_bank_card WHERE user_id = #{userId} AND bind_status = 'ACTIVE' ORDER BY is_default DESC, bind_time DESC
+    </select>
+
+    <select id="isBound" resultType="boolean">
+        SELECT COUNT(1) > 0 FROM user_bank_card WHERE user_id = #{userId} AND pool_card_id = #{poolCardId} AND bind_status = 'ACTIVE'
+    </select>
+
+    <select id="selectById" resultType="com.loan.entity.UserBankCard">
+        SELECT * FROM user_bank_card WHERE id = #{id}
+    </select>
+
+    <update id="updateDefaultCard">
+        UPDATE user_bank_card SET is_default = FALSE WHERE user_id = #{userId};
+        UPDATE user_bank_card SET is_default = TRUE WHERE id = #{cardId}
+    </update>
+
+    <update id="deleteById">
+        UPDATE user_bank_card SET bind_status = 'UNBOUND' WHERE id = #{id}
+    </update>
+
+</mapper>

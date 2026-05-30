@@ -1,0 +1,62 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>个人信用借款合同</title>
+    <style type="text/css">
+        body {
+            font-family: 'SimSun', 'STSong', '宋体', serif;
+            font-size: 12pt;
+            line-height: 1.5;
+            padding: 40px;
+        }
+        .header { text-align: center; font-size: 18pt; font-weight: bold; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 10px; }
+        .section-title { font-weight: bold; margin-top: 20px; margin-bottom: 10px; font-size: 13pt; border-bottom: 1px solid #ccc; }
+        .content { text-indent: 2em; margin-bottom: 10px; text-align: justify; }
+        .highlight { font-weight: bold; text-decoration: underline; }
+
+        /* ⭐ 修改：使用 table 布局替代 flex，确保兼容性 */
+        .sign-table { width: 100%; margin-top: 60px; border-collapse: collapse; }
+        .sign-table td { width: 50%; vertical-align: top; padding: 10px; }
+        .sign-line { border-top: 1px solid #000; margin-top: 40px; padding-top: 5px; }
+    </style>
+</head>
+<body>
+<div class="header">个人信用借款合同</div>
+
+<p><strong>合同编号：</strong><span th:text="${contractNo}"></span></p>
+<p><strong>签署日期：</strong><span th:text="${signDate}"></span></p>
+
+<div class="section-title">第一条 借款人信息</div>
+<p class="content">
+    借款人（甲方）：<span class="highlight" th:text="${borrowerName}"></span>
+    <br/>身份证号码：<span class="highlight" th:text="${idCard}"></span>
+</p>
+
+<div class="section-title">第二条 借款详情</div>
+<p class="content">
+    借款本金：人民币 <span class="highlight" th:text="${amount}"></span> 元整。
+    <br/>借款期限：<span class="highlight" th:text="${term}"></span> 个月。
+    <br/>年化利率：<span class="highlight" th:text="${rate}"></span>%。
+</p>
+
+<div class="section-title">第三条 违约责任</div>
+<p class="content">若甲方逾期，乙方有权按日加收万分之五罚息。</p>
+
+<!-- ⭐ 修改：使用 Table 实现左右签字栏 -->
+<table class="sign-table">
+    <tr>
+        <td>
+            <strong>甲方（借款人签字）：</strong>
+            <div style="height: 60px;"></div>
+            <div class="sign-line">日期：</div>
+        </td>
+        <td>
+            <strong>乙方（平台盖章）：</strong>
+            <div style="font-weight: bold; margin-top: 10px;">[电子公章]</div>
+            <div class="sign-line">日期：</div>
+        </td>
+    </tr>
+</table>
+</body>
+</html>

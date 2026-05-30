@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.MockBankCardPoolMapper">
+
+    <select id="selectByCardNumber" resultType="com.loan.entity.MockBankCardPool">
+        SELECT * FROM mock_bank_card_pool WHERE card_number = #{cardNumber}
+    </select>
+
+    <select id="selectById" resultType="com.loan.entity.MockBankCardPool">
+        SELECT * FROM mock_bank_card_pool WHERE id = #{id}
+    </select>
+
+    <update id="decreaseBalance">
+        UPDATE mock_bank_card_pool
+        SET balance = balance - #{amount}, update_time = NOW()
+        WHERE id = #{id} AND balance >= #{amount} AND status = 'ACTIVE'
+    </update>
+
+    <update id="increaseBalance">
+        UPDATE mock_bank_card_pool
+        SET balance = balance + #{amount}, update_time = NOW()
+        WHERE id = #{id} AND status = 'ACTIVE'
+    </update>
+
+</mapper>

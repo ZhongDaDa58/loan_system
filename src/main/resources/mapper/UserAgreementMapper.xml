@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.UserAgreementMapper">
+
+    <!-- 查询所有当前生效的协议 -->
+    <select id="selectCurrentAgreements" resultType="com.loan.entity.UserAgreement">
+        SELECT
+            agreement_id, agreement_type, version, title, summary,
+            content, is_current, effective_date, create_time, update_time
+        FROM user_agreement
+        WHERE is_current = 1
+        ORDER BY agreement_type
+    </select>
+
+    <!-- 根据协议类型查询当前版本 -->
+    <select id="selectCurrentByType" resultType="com.loan.entity.UserAgreement">
+        SELECT
+            agreement_id, agreement_type, version, title, summary,
+            content, is_current, effective_date, create_time, update_time
+        FROM user_agreement
+        WHERE agreement_type = #{agreementType} AND is_current = 1
+            LIMIT 1
+    </select>
+
+    <!-- 根据协议ID查询 -->
+    <select id="selectById" resultType="com.loan.entity.UserAgreement">
+        SELECT
+            agreement_id, agreement_type, version, title, summary,
+            content, is_current, effective_date, create_time, update_time
+        FROM user_agreement
+        WHERE agreement_id = #{agreementId}
+    </select>
+
+    <!-- 插入新协议版本 -->
+    <insert id="insert" parameterType="com.loan.entity.UserAgreement" useGeneratedKeys="true" keyProperty="agreementId">
+        INSERT INTO user_agreement (
+            agreement_type, version, title, summary, content,
+            is_current, effective_date, create_time, update_time
+        ) VALUES (
+                     #{agreementType}, #{version}, #{title}, #{summary}, #{content},
+                     #{isCurrent}, #{effectiveDate}, NOW(), NOW()
+                 )
+    </insert>
+
+    <!-- 取消某个类型的所有当前版本 -->
+    <update id="updateIsCurrentToNo">
+        UPDATE user_agreement
+        SET is_current = 0, update_time = NOW()
+        WHERE agreement_type = #{agreementType} AND is_current = 1
+    </update>
+
+</mapper>

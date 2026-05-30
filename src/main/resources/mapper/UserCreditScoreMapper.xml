@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.UserCreditScoreMapper">
+
+    <select id="selectByUserId" resultType="com.loan.entity.UserCreditScore">
+        SELECT id, user_id AS userId, credit_score AS creditScore, create_time AS createTime, update_time AS updateTime
+        FROM user_credit_score
+        WHERE user_id = #{userId}
+    </select>
+
+    <insert id="insert" parameterType="com.loan.entity.UserCreditScore">
+        INSERT INTO user_credit_score (user_id, credit_score)
+        VALUES (#{userId}, #{creditScore})
+    </insert>
+
+    <update id="updateCreditScore">
+        UPDATE user_credit_score
+        SET credit_score = #{creditScore}, update_time = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+    </update>
+
+    <insert id="upsert" parameterType="com.loan.entity.UserCreditScore">
+        INSERT INTO user_credit_score (user_id, credit_score)
+        VALUES (#{userId}, #{creditScore})
+            ON DUPLICATE KEY UPDATE
+                                 credit_score = #{creditScore},
+                                 update_time = CURRENT_TIMESTAMP
+    </insert>
+</mapper>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.LoanIssueMapper">
+    <insert id="insert" parameterType="com.loan.entity.LoanIssue">
+        INSERT INTO loan_issue (
+            issue_id, application_id, user_id, issue_amount, issue_status, issue_time, disbursement_card_id
+        ) VALUES (
+                     #{issueId}, #{applicationId}, #{userId}, #{issueAmount}, #{issueStatus}, #{issueTime}, #{disbursementCardId}
+                 )
+    </insert>
+
+    <select id="selectByApplicationId" resultType="com.loan.entity.LoanIssue">
+        SELECT issue_id FROM loan_issue WHERE application_id = #{applicationId}
+    </select>
+</mapper>

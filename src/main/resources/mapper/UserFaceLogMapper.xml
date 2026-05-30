@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.UserFaceLogMapper">
+    <insert id="insert" parameterType="com.loan.entity.UserFaceLog">
+        INSERT INTO user_face_log (user_id, face_image_url, similarity_score, is_live, result)
+        VALUES (#{userId}, #{faceImageUrl}, #{similarityScore}, #{isLive}, #{result})
+    </insert>
+</mapper>

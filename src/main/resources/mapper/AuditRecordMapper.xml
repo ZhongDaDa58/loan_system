@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.AuditRecordMapper">
+    <!-- 保存审核记录 -->
+    <insert id="insert" parameterType="com.loan.entity.AuditRecord">
+        INSERT INTO audit_record (
+            audit_id, application_id, auditor_id, audit_result, audit_opinion, audit_time
+        ) VALUES (
+                     #{auditId}, #{applicationId}, #{auditorId}, #{auditResult}, #{auditOpinion}, #{auditTime}
+                 )
+    </insert>
+
+    <!-- 查询待审核列表 -->
+    <select id="selectPendingList" resultType="com.loan.entity.vo.PendingAuditVO">
+        SELECT
+            la.application_id AS applicationId,
+            la.user_id AS userId,
+            su.real_name AS userName,
+            su.phone AS userPhone,
+            lp.product_name AS productName,
+            la.apply_amount AS applyAmount,
+            la.apply_term AS applyTerm,
+            la.credit_score AS creditScore,
+            la.apply_time AS applyTime
+        FROM loan_application la
+                 LEFT JOIN sys_user su ON la.user_id = su.user_id
+                 LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+        WHERE la.application_status = 'pending'
+        ORDER BY la.apply_time ASC
+    </select>
+</mapper>

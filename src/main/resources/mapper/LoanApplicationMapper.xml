@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.LoanApplicationMapper">
+    <!-- 保存申请记录 -->
+    <insert id="insert" parameterType="com.loan.entity.LoanApplication">
+        INSERT INTO loan_application (
+            application_id, user_id, product_id, apply_amount, apply_term,
+            credit_score, scorecard_score, scorecard_decision, application_status, apply_time, disbursement_card_id
+        ) VALUES (
+                     #{applicationId}, #{userId}, #{productId}, #{applyAmount}, #{applyTerm},
+                     #{creditScore}, #{scorecardScore}, #{scorecardDecision}, #{applicationStatus}, #{applyTime}, #{disbursementCardId}
+                 )
+    </insert>
+
+    <!-- 根据用户ID查询申请进度 -->
+    <select id="selectByUserId" resultType="com.loan.entity.vo.LoanApplicationVO">
+        SELECT
+            la.application_id AS applicationId,
+            la.user_id AS userId,
+            su.real_name AS userName,
+            su.phone AS userPhone,
+            lp.product_name AS productName,
+            la.apply_amount AS applyAmount,
+            la.apply_term AS applyTerm,
+            la.application_status AS applicationStatus,
+            CASE la.application_status
+                WHEN 'pending' THEN '待审核'
+                WHEN 'approved' THEN '审核通过'
+                WHEN 'rejected' THEN '拒绝'
+                WHEN 'supplement' THEN '需补充材料'
+                WHEN 'issued' THEN '已放款'
+                ELSE '未知状态' END AS statusDesc,
+            la.apply_time AS applyTime,
+            la.contract_status AS contractStatus,
+            la.contract_path AS contractPath,
+            la.sign_time AS signTime,
+            la.stamp_time AS stampTime
+        FROM loan_application la
+        LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+        LEFT JOIN sys_user su ON la.user_id = su.user_id
+        WHERE la.user_id = #{userId}
+        ORDER BY la.apply_time DESC
+    </select>
+    <!-- 根据申请ID查询 -->
+    <select id="selectByApplicationId" resultType="com.loan.entity.LoanApplication">
+        SELECT
+        application_id AS applicationId,
+        user_id AS userId,
+        product_id AS productId,
+        apply_amount AS applyAmount,
+        apply_term AS applyTerm,
+        application_status AS applicationStatus,
+        credit_score AS creditScore,
+        scorecard_score AS scorecardScore,
+        disbursement_card_id AS disbursementCardId,
+        apply_time AS applyTime,
+        update_time AS updateTime,
+        <!-- ⭐ 新增字段的映射 -->
+        contract_status AS contractStatus,
+        contract_path AS contractPath,
+        contract_hash AS contractHash,
+        sign_time AS signTime,
+        stamp_time AS stampTime
+        FROM loan_application
+        WHERE application_id = #{applicationId}
+    </select>
+
+    <!-- 更新申请状态 -->
+    <update id="updateStatus">
+        UPDATE loan_application
+        SET application_status = #{status}, update_time = CURRENT_TIMESTAMP
+        WHERE application_id = #{applicationId}
+    </update>
+
+    <select id="selectApplyAmountByApplicationId" resultType="java.math.BigDecimal">
+        SELECT apply_amount FROM loan_application WHERE application_id = #{applicationId}
+    </select>
+
+    <select id="selectInterestRateByProductId" resultType="java.math.BigDecimal">
+        SELECT interest_rate FROM loan_product WHERE product_id = #{productId}
+    </select>
+
+    <select id="selectAllPassed" resultType="com.loan.entity.vo.LoanApplicationVO">
+        SELECT
+            la.application_id AS applicationId,
+            la.user_id AS userId,
+            su.real_name AS userName,
+            su.phone AS userPhone,
+            lp.product_name AS productName,
+            la.apply_amount AS applyAmount,
+            la.apply_term AS applyTerm,
+            la.application_status AS applicationStatus,
+            CASE la.application_status
+                WHEN 'pending' THEN '待审核'
+                WHEN 'approved' THEN '审核通过'
+                WHEN 'rejected' THEN '拒绝'
+                WHEN 'supplement' THEN '需补充材料'
+                WHEN 'issued' THEN '已放款'
+                ELSE '未知状态' END AS statusDesc,
+            la.apply_time AS applyTime
+        FROM loan_application la
+                 LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+                 LEFT JOIN sys_user su ON la.user_id = su.user_id
+        WHERE la.application_status = 'approved'
+        ORDER BY la.apply_time DESC
+    </select>
+
+    <!-- 更新合同路径和哈希值 -->
+    <update id="updateContractInfo">
+        UPDATE loan_application
+        SET contract_path = #{path},
+            contract_hash = #{hash},
+            update_time = CURRENT_TIMESTAMP
+        WHERE application_id = #{applicationId}
+    </update>
+
+    <update id="updateContractStatus">
+        UPDATE loan_application
+        SET contract_status = #{status},
+            update_time = CURRENT_TIMESTAMP
+        WHERE application_id = #{applicationId}
+    </update>
+
+    <!-- 更新最终哈希值 -->
+    <update id="updateContractHash">
+        UPDATE loan_application
+        SET contract_hash = #{hash},
+            update_time = CURRENT_TIMESTAMP
+        WHERE application_id = #{applicationId}
+    </update>
+</mapper>

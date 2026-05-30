@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.RepaymentPlanMapper">
+    <insert id="insert" parameterType="com.loan.entity.RepaymentPlan">
+        INSERT INTO repayment_plan (
+            plan_id, application_id, user_id, total_amount, total_principal,
+            total_interest, repayment_type, term_count, create_time
+        ) VALUES (
+                     #{planId}, #{applicationId}, #{userId}, #{totalAmount}, #{totalPrincipal},
+                     #{totalInterest}, #{repaymentType}, #{termCount}, #{createTime}
+                 )
+    </insert>
+
+    <select id="selectByUserId" resultType="com.loan.entity.vo.RepaymentPlanVO">
+        SELECT
+            rp.plan_id AS planId,
+            rp.application_id AS applicationId,
+            rp.total_amount AS totalAmount,
+            rp.total_principal AS totalPrincipal,
+            rp.total_interest AS totalInterest,
+            rp.repayment_type AS repaymentType,
+            CASE rp.repayment_type
+                WHEN 'equal_principal_interest' THEN '等额本息'
+                WHEN 'equal_principal' THEN '等额本金'
+                ELSE '未知方式' END AS repaymentTypeDesc,
+            rp.term_count AS termCount,
+            rp.create_time AS createTime
+        FROM repayment_plan rp
+        WHERE rp.user_id = #{userId}
+        ORDER BY rp.create_time DESC
+    </select>
+
+    <select id="selectByApplicationId" resultType="com.loan.entity.vo.RepaymentPlanVO">
+        SELECT
+            rp.plan_id AS planId,
+            rp.application_id AS applicationId,
+            rp.user_id AS userId,
+            rp.total_amount AS totalAmount,
+            rp.total_principal AS totalPrincipal,
+            rp.total_interest AS totalInterest,
+            rp.repayment_type AS repaymentType,
+            CASE rp.repayment_type
+                WHEN 'equal_principal_interest' THEN '等额本息'
+                WHEN 'equal_principal' THEN '等额本金'
+                ELSE '未知方式' END AS repaymentTypeDesc,
+            rp.term_count AS termCount,
+            rp.create_time AS createTime
+        FROM repayment_plan rp
+        WHERE rp.application_id = #{applicationId}
+            LIMIT 1
+    </select>
+
+    <select id="selectAllPlansWithUserInfo" resultType="com.loan.entity.vo.RepaymentPlanListVO">
+        SELECT
+            rp.plan_id AS planId,
+            rp.application_id AS applicationId,
+            rp.user_id AS userId,
+            su.real_name AS userName,
+            su.phone AS userPhone,
+            rp.total_amount AS totalAmount,
+            rp.total_principal AS totalPrincipal,
+            rp.total_interest AS totalInterest,
+            rp.repayment_type AS repaymentType,
+            CASE rp.repayment_type
+                WHEN 'equal_principal_interest' THEN '等额本息'
+                WHEN 'equal_principal' THEN '等额本金'
+                ELSE '未知方式' END AS repaymentTypeDesc,
+            rp.term_count AS termCount,
+            rp.create_time AS createTime,
+            (SELECT COUNT(*) FROM monthly_repayment mr
+             WHERE mr.plan_id = rp.plan_id
+               AND mr.repayment_status = 'overdue') AS overdueCount
+        FROM repayment_plan rp
+                 LEFT JOIN sys_user su ON rp.user_id = su.user_id
+        ORDER BY rp.create_time DESC
+    </select>
+
+</mapper>

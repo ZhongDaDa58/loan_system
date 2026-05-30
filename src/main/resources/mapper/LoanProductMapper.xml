@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.LoanProductMapper">
+    <select id="selectById" resultType="com.loan.entity.LoanProduct">
+        SELECT product_id, product_name, min_amount, max_amount, min_term, max_term, interest_rate, status, auto_pass_score, manual_review_score, create_time, update_time
+        FROM loan_product
+        WHERE product_id = #{productId}
+    </select>
+
+    <select id="selectByIdVO" resultType="com.loan.entity.vo.LoanProductVO">
+        SELECT product_id, product_name, min_amount, max_amount, min_term, max_term, interest_rate, status, create_time, update_time
+        FROM loan_product
+        WHERE product_id = #{productId} AND status = '1'
+    </select>
+
+    <select id="selectAllEnabled" resultType="com.loan.entity.vo.LoanProductVO">
+        SELECT
+            product_id,
+            product_name,
+            interest_rate,
+            min_amount,
+            max_amount,
+            min_term,
+            max_term
+
+        FROM loan_product
+        WHERE status = '1'
+        ORDER BY create_time DESC
+    </select>
+
+
+    <select id="selectInterestRateByProductId" parameterType="string" resultType="java.math.BigDecimal">
+        SELECT interest_rate
+        FROM loan_product
+        WHERE product_id = #{productId}
+    </select>
+</mapper>
