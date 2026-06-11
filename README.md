@@ -121,11 +121,7 @@ CREATE DATABASE loan_risk_control CHARACTER SET utf8mb4 COLLATE utf8mb4_general_
 - 如果无法连接 MySQL：确认 `DB_PASSWORD`、`spring.datasource.url` 中数据库名和主机/端口正确，数据库已创建并允许访问。
 - 如果 PDF 的中文显示异常：确认使用的字体（`simsun.ttc`）已包含并在 Flying Saucer/OpenPDF 渲染时被正确注册。
 
-贡献与联系
--------
-欢迎提交 Issues 或 Pull Requests（假设在 Git 仓库中）。在提交之前请确保：
-- 修复包含测试或已手动验证
-- 不提交敏感信息
+
 
 
 
