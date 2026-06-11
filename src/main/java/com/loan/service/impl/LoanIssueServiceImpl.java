@@ -73,8 +73,13 @@ public class LoanIssueServiceImpl implements LoanIssueService {
         if (application == null) {
             throw new BusinessException(400, "贷款申请不存在");
         }
+        // 仅在申请为审核通过且合同已被用户签署（contractStatus == 2）后可放款
         if (!ApplicationStatusEnum.APPROVED.getCode().equals(application.getApplicationStatus())) {
             throw new BusinessException(400, "仅审核通过的申请可放款");
+        }
+
+        if (application.getContractStatus() == null || application.getContractStatus() != 2) {
+            throw new BusinessException(400, "用户尚未完成合同签署，无法放款");
         }
 
         LoanIssue existingIssue = loanIssueMapper.selectByApplicationId(applicationId);

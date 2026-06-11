@@ -89,7 +89,8 @@ public class AuditServiceImpl implements AuditService {
         auditRecord.setAuditTime(new Date());
 
         auditRecordMapper.insert(auditRecord);
-        if ("approved".equals(applicationStatus)) {
+        // 如果审核结果为 approved，则生成合同草稿（合同由 contractService 处理）
+        if ("approved".equals(auditResult)) {
             try {
                 contractService.generateDraftContract(auditDTO.getApplicationId());
             } catch (Exception e) {

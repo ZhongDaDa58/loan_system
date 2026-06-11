@@ -8,7 +8,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
-    @Value("${contract.storage.path:./contracts/}")
+    @Value("${contract.storage.path:D:/code/loan/contracts/}")
     private String contractStoragePath;
 
     @Bean

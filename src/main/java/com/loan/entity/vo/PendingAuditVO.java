@@ -13,5 +13,6 @@ public class PendingAuditVO {
     private BigDecimal applyAmount; // 申请金额
     private Integer applyTerm;      // 申请期限
     private Integer creditScore;    // 信用分
+    private String contractStatus;  // 合同状态
     private Date applyTime;         // 申请时间
 }

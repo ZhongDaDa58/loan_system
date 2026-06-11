@@ -21,11 +21,40 @@
             la.apply_amount AS applyAmount,
             la.apply_term AS applyTerm,
             la.credit_score AS creditScore,
-            la.apply_time AS applyTime
+            la.apply_time AS applyTime,
+            la.contract_status AS contractStatus
         FROM loan_application la
                  LEFT JOIN sys_user su ON la.user_id = su.user_id
                  LEFT JOIN loan_product lp ON la.product_id = lp.product_id
         WHERE la.application_status = 'pending'
         ORDER BY la.apply_time ASC
+    </select>
+
+    <!-- 查询某个审核员的历史审核记录，支持按日期区间过滤并分页 -->
+    <select id="selectByAuditorHistory" resultType="com.loan.entity.vo.AuditHistoryVO">
+        SELECT ar.audit_id AS auditId,
+               ar.application_id AS applicationId,
+               ar.auditor_id AS auditorId,
+               ar.audit_result AS auditResult,
+               ar.audit_opinion AS auditOpinion,
+               ar.audit_time AS auditTime,
+               la.apply_amount AS applyAmount,
+               la.apply_term AS applyTerm,
+               lp.product_name AS productName,
+               la.user_id AS userId,
+               su.real_name AS userName
+        FROM audit_record ar
+                 LEFT JOIN loan_application la ON ar.application_id = la.application_id
+                 LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+                 LEFT JOIN sys_user su ON la.user_id = su.user_id
+        WHERE ar.auditor_id = #{auditorId}
+          <if test="startDate != null and startDate != ''">
+            AND DATE(ar.audit_time) &gt;= #{startDate}
+          </if>
+          <if test="endDate != null and endDate != ''">
+            AND DATE(ar.audit_time) &lt;= #{endDate}
+          </if>
+        ORDER BY ar.audit_time DESC
+        LIMIT #{offset}, #{limit}
     </select>
 </mapper>

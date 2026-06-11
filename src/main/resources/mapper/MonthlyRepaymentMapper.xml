@@ -70,4 +70,13 @@
         WHERE rp.user_id = #{userId}
           AND mr.repayment_status = 'overdue'
     </select>
+
+    <!-- 按期数统计所有逾期贷款个数（term, count） -->
+    <select id="selectOverdueCountGroupedByTerm" resultType="com.loan.entity.vo.OverdueTermCountVO">
+        SELECT mr.term AS term, COUNT(1) AS count
+        FROM monthly_repayment mr
+        WHERE mr.repayment_status = 'overdue'
+        GROUP BY mr.term
+        ORDER BY mr.term ASC
+    </select>
 </mapper>

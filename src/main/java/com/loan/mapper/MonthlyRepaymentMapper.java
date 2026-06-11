@@ -26,4 +26,9 @@ public interface MonthlyRepaymentMapper {
     // 查询逾期
     List<MonthlyRepayment> selectOverdueByUserId(@Param("userId") String userId);
 
+    /**
+     * 查询所有逾期按期数聚合的个数统计
+     */
+    java.util.List<com.loan.entity.vo.OverdueTermCountVO> selectOverdueCountGroupedByTerm();
+
 }

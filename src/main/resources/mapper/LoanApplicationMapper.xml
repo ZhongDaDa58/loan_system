@@ -97,7 +97,12 @@
                 WHEN 'supplement' THEN '需补充材料'
                 WHEN 'issued' THEN '已放款'
                 ELSE '未知状态' END AS statusDesc,
-            la.apply_time AS applyTime
+            la.apply_time AS applyTime,
+            la.contract_status AS contractStatus,
+            la.contract_path AS contractPath,
+            la.sign_time AS signTime,
+            la.stamp_time AS stampTime
+
         FROM loan_application la
                  LEFT JOIN loan_product lp ON la.product_id = lp.product_id
                  LEFT JOIN sys_user su ON la.user_id = su.user_id
@@ -128,4 +133,41 @@
             update_time = CURRENT_TIMESTAMP
         WHERE application_id = #{applicationId}
     </update>
+
+    <!-- 统计指定状态的申请数量 （如 pending） -->
+    <select id="countByStatus" resultType="int">
+        SELECT COUNT(1) FROM loan_application WHERE application_status = #{status}
+    </select>
+
+    <!-- 统计某日被审核（update_time 日期等于给定日期）且不为 pending 的申请数量 -->
+    <select id="countAuditedByDate" resultType="int">
+        SELECT COUNT(1) FROM loan_application
+        WHERE DATE(update_time) = #{date} AND application_status &lt;&gt; 'pending'
+    </select>
+
+    <!-- 统计某日审核通过（approved）的申请数量 -->
+    <select id="countApprovedByDate" resultType="int">
+        SELECT COUNT(1) FROM loan_application
+        WHERE DATE(update_time) = #{date} AND application_status = 'approved'
+    </select>
+
+    <!-- 按日期范围统计已审核数量（按 update_time 的日期分组） -->
+    <select id="selectAuditedCountGroupByDate" resultType="com.loan.entity.vo.DateMetricVO">
+        SELECT DATE_FORMAT(update_time, '%Y-%m-%d') AS date, COUNT(1) AS value
+        FROM loan_application
+        WHERE DATE(update_time) BETWEEN #{startDate} AND #{endDate}
+          AND application_status &lt;&gt; 'pending'
+        GROUP BY DATE_FORMAT(update_time, '%Y-%m-%d')
+        ORDER BY DATE_FORMAT(update_time, '%Y-%m-%d') ASC
+    </select>
+
+    <!-- 按日期范围统计已通过数量（按 update_time 的日期分组） -->
+    <select id="selectApprovedCountGroupByDate" resultType="com.loan.entity.vo.DateMetricVO">
+        SELECT DATE_FORMAT(update_time, '%Y-%m-%d') AS date, COUNT(1) AS value
+        FROM loan_application
+        WHERE DATE(update_time) BETWEEN #{startDate} AND #{endDate}
+          AND application_status = 'approved'
+        GROUP BY DATE_FORMAT(update_time, '%Y-%m-%d')
+        ORDER BY DATE_FORMAT(update_time, '%Y-%m-%d') ASC
+    </select>
 </mapper>

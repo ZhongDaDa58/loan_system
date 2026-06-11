@@ -107,8 +107,10 @@ public class ContractServiceImpl implements ContractService {
             String sourcePath = storagePath + application.getContractPath().replace("/contracts/", "");
             PdfGeneratorUtil.addSignatures(sourcePath, signatureBase64, null, sourcePath);
 
-            // 3. 更新状态为“已签署” (2) 并记录时间
+            // 3. 更新状态为“已签署” (2) 并记录时间；合同签署状态由 contractStatus 表示，申请整体状态继续使用 applicationStatus
             loanApplicationMapper.updateContractStatus(applicationId, 2);
+            // 记录签署时间
+            // 如果需要，可在 mapper 添加 updateSignTime 方法；目前 LoanApplication.signTime 字段可由触发方补充
             // 可以在 Mapper 中增加一个 updateSignTime 方法
 
             return Result.success("签署成功");

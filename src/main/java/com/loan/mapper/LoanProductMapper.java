@@ -17,4 +17,19 @@ public interface LoanProductMapper {
     List<LoanProductVO> selectAllEnabled();
     //查询年利率方法
     BigDecimal selectInterestRateByProductId(@Param("productId") String productId);
+    
+    /**
+     * 更新产品信息（只更新可编辑字段，不修改 status）
+     */
+    int updateProduct(LoanProduct product);
+    
+    /**
+     * 更新产品状态（0-下架，1-上架）
+     */
+    int updateProductStatus(@Param("productId") String productId, @Param("status") Integer status);
+
+    /**
+     * 插入新产品
+     */
+    int insertProduct(LoanProduct product);
 }

@@ -5,6 +5,7 @@ import org.apache.ibatis.annotations.Param;
 
 import java.math.BigDecimal;
 import java.util.List;
+import com.loan.entity.vo.DateMetricVO;
 
 public interface LoanApplicationMapper {
     // 保存申请记录
@@ -24,6 +25,21 @@ public interface LoanApplicationMapper {
 
     //查询所有已通过申请
     List<LoanApplicationVO> selectAllPassed();
+
+    // 统计指定状态的申请数量
+    int countByStatus(@Param("status") String status);
+
+    // 统计某日被审核（update_time）过的申请数量（不包括仍为 pending 的）
+    int countAuditedByDate(@Param("date") String date);
+
+    // 统计某日审核通过（approved）的申请数量
+    int countApprovedByDate(@Param("date") String date);
+
+    // 按日期范围统计已审核数量（按 update_time 的日期分组），返回每一天的日期与数量
+    List<DateMetricVO> selectAuditedCountGroupByDate(@Param("startDate") String startDate, @Param("endDate") String endDate);
+
+    // 按日期范围统计已通过数量（按 update_time 的日期分组），返回每一天的日期与数量
+    List<DateMetricVO> selectApprovedCountGroupByDate(@Param("startDate") String startDate, @Param("endDate") String endDate);
 
     void updateContractInfo(@Param("applicationId") String applicationId,
                             @Param("path") String path,
