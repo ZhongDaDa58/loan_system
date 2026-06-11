@@ -127,9 +127,5 @@ CREATE DATABASE loan_risk_control CHARACTER SET utf8mb4 COLLATE utf8mb4_general_
 - 修复包含测试或已手动验证
 - 不提交敏感信息
 
----
 
-如果你需要，我可以：
-- 把本文件内容进一步精简或加入用 Docker 运行的说明；
-- 或者直接在 PowerShell 下帮你写入一个含有替换占位符的 `README.md`（并显示创建命令）。
 
