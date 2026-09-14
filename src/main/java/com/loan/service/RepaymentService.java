@@ -1,5 +1,6 @@
 package com.loan.service;
 import com.loan.entity.dto.RepaymentSubmitDTO;
+import com.loan.entity.vo.DueItemsVO;
 import com.loan.entity.vo.RepaymentPlanListVO;
 import com.loan.entity.vo.RepaymentPlanVO;
 import com.loan.entity.vo.Result;
@@ -16,4 +17,11 @@ public interface RepaymentService {
     Result<?> submitRepayment(RepaymentSubmitDTO repaymentDTO, String userId);
     // 查询所有还款计划（审核员用）
     Result<List<RepaymentPlanListVO>> queryAllRepaymentPlans();
+
+    // ========== 立即还款 ==========
+
+    /**
+     * 查询当前用户待还款项
+     */
+    Result<DueItemsVO> queryDueItems(String userId);
 }

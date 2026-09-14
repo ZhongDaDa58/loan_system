@@ -30,6 +30,16 @@ public class LoanProductServiceImpl implements LoanProductService {
         return product;
     }
     @Override
+    public List<LoanProductVO> getAllProducts() {
+        List<LoanProductVO> products = loanProductMapper.selectAll();
+        for (LoanProductVO product : products) {
+            product.setAmountRange(product.getMinAmount(), product.getMaxAmount());
+            product.setTermRange(product.getMinTerm(), product.getMaxTerm());
+        }
+        return products;
+    }
+
+    @Override
     public List<LoanProductVO> getProductList() {
         List<LoanProductVO> products = loanProductMapper.selectAllEnabled();
         // 处理VO的展示字段（金额范围、期限范围）
@@ -116,7 +126,24 @@ public class LoanProductServiceImpl implements LoanProductService {
             throw new BusinessException(500, "切换产品状态失败");
         }
 
-        return getProductDetail(productId);
+        // 直接返回更新后的产品信息手动转 VO（不用 getProductDetail/selectByIdVO，它们会过滤已下架）
+        LoanProduct p = loanProductMapper.selectById(productId);
+        LoanProductVO vo = new LoanProductVO();
+        vo.setProductId(p.getProductId());
+        vo.setProductName(p.getProductName());
+        vo.setMinAmount(p.getMinAmount());
+        vo.setMaxAmount(p.getMaxAmount());
+        vo.setMinTerm(p.getMinTerm());
+        vo.setMaxTerm(p.getMaxTerm());
+        vo.setInterestRate(p.getInterestRate());
+        vo.setStatus(p.getStatus());
+        vo.setAutoPassScore(p.getAutoPassScore());
+        vo.setManualReviewScore(p.getManualReviewScore());
+        vo.setCreateTime(p.getCreateTime());
+        vo.setUpdateTime(p.getUpdateTime());
+        vo.setAmountRange(p.getMinAmount(), p.getMaxAmount());
+        vo.setTermRange(p.getMinTerm(), p.getMaxTerm());
+        return vo;
     }
 
     @Override

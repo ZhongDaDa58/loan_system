@@ -26,4 +26,16 @@
                                  credit_score = #{creditScore},
                                  update_time = CURRENT_TIMESTAMP
     </insert>
+
+    <!-- ========== 用户管理模块 ========== -->
+
+    <select id="selectHistoryByUserId" resultType="com.loan.entity.vo.CreditHistoryPointVO">
+        SELECT
+            DATE_FORMAT(create_time, '%Y-%m') AS date,
+            credit_score AS score
+        FROM user_credit_score
+        WHERE user_id = #{userId}
+        ORDER BY create_time ASC
+    </select>
+
 </mapper>

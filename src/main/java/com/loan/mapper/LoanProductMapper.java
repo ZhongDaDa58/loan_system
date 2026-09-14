@@ -15,6 +15,11 @@ public interface LoanProductMapper {
      * 查询所有可用产品（状态为ENABLED）
      */
     List<LoanProductVO> selectAllEnabled();
+
+    /**
+     * 查询所有产品（含已下架）
+     */
+    List<LoanProductVO> selectAll();
     //查询年利率方法
     BigDecimal selectInterestRateByProductId(@Param("productId") String productId);
     

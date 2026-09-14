@@ -3,6 +3,8 @@ package com.loan.service.impl;
 import com.loan.entity.MonthlyRepayment;
 import com.loan.entity.enums.RepaymentStatusEnum;
 import com.loan.mapper.MonthlyRepaymentMapper;
+import com.loan.mapper.RepaymentPlanMapper;
+import com.loan.service.NotificationService;
 import jakarta.annotation.Resource;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -13,13 +15,19 @@ import java.util.List;
 
 /**
  * 逾期检测服务
- * 每天凌晨 2 点自动检查未还款记录，将超过到期日的标记为逾期
+ * 每天凌晨 2 点自动检查未还款记录，将超过到期日的标记为逾期并发送通知
  */
 @Service
 public class OverdueCheckService {
 
     @Resource
     private MonthlyRepaymentMapper monthlyRepaymentMapper;
+
+    @Resource
+    private RepaymentPlanMapper repaymentPlanMapper;
+
+    @Resource
+    private NotificationService notificationService;
 
     /**
      * 定时任务：每天凌晨 2 点执行逾期检查
@@ -53,6 +61,23 @@ public class OverdueCheckService {
                     System.out.println("标记逾期：" + repayment.getRepaymentId() +
                             ", 期数：" + repayment.getTerm() +
                             ", 到期日：" + repayment.getDueDate());
+
+                    // 发送 App 内通知
+                    try {
+                        String userId = repaymentPlanMapper.selectUserIdByPlanId(repayment.getPlanId());
+                        if (userId != null) {
+                            notificationService.sendNotification(
+                                    userId,
+                                    "还款逾期提醒",
+                                    "您第 " + repayment.getTerm() + " 期还款（" +
+                                            repayment.getRepaymentAmount() + " 元）已逾期，请尽快还款以免影响信用。",
+                                    "overdue",
+                                    repayment.getRepaymentId()
+                            );
+                        }
+                    } catch (Exception e) {
+                        System.err.println("发送逾期通知失败: " + e.getMessage());
+                    }
                 }
             }
         }

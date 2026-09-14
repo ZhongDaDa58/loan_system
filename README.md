@@ -124,4 +124,3 @@ CREATE DATABASE loan_risk_control CHARACTER SET utf8mb4 COLLATE utf8mb4_general_
 
 
 
-

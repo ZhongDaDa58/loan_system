@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.UserCreditProfileMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.UserCreditProfile">
+        INSERT INTO user_credit_profile (
+            user_id, name, id_card, phone, email, birth_date, gender, education, occupation,
+            family_info, financial_info, employment_info,
+            age, debt_ratio, monthly_income, credit_lines, dependents, revolving_util, credit_score,
+            create_time, update_time
+        ) VALUES (
+            #{userId}, #{name}, #{idCard}, #{phone}, #{email}, #{birthDate}, #{gender}, #{education}, #{occupation},
+            #{familyInfo}, #{financialInfo}, #{employmentInfo},
+            #{age}, #{debtRatio}, #{monthlyIncome}, #{creditLines}, #{dependents}, #{revolvingUtil}, #{creditScore},
+            #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.loan.entity.UserCreditProfile">
+        UPDATE user_credit_profile
+        SET name = #{name}, id_card = #{idCard}, phone = #{phone}, email = #{email},
+            birth_date = #{birthDate}, gender = #{gender}, education = #{education}, occupation = #{occupation},
+            family_info = #{familyInfo}, financial_info = #{financialInfo}, employment_info = #{employmentInfo},
+            age = #{age}, debt_ratio = #{debtRatio}, monthly_income = #{monthlyIncome},
+            credit_lines = #{creditLines}, dependents = #{dependents}, revolving_util = #{revolvingUtil},
+            update_time = #{updateTime}
+        WHERE user_id = #{userId}
+    </update>
+
+    <update id="updateScore">
+        UPDATE user_credit_profile
+        SET credit_score = #{creditScore}, update_time = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+    </update>
+
+    <select id="selectByUserId" resultType="com.loan.entity.UserCreditProfile">
+        SELECT
+            id, user_id AS userId,
+            name, id_card AS idCard, phone, email, birth_date AS birthDate,
+            gender, education, occupation,
+            family_info AS familyInfo, financial_info AS financialInfo, employment_info AS employmentInfo,
+            age, debt_ratio AS debtRatio, monthly_income AS monthlyIncome,
+            credit_lines AS creditLines, dependents, revolving_util AS revolvingUtil,
+            credit_score AS creditScore, create_time AS createTime, update_time AS updateTime
+        FROM user_credit_profile
+        WHERE user_id = #{userId}
+        LIMIT 1
+    </select>
+
+    <delete id="deleteByUserId">
+        DELETE FROM user_credit_profile WHERE user_id = #{userId}
+    </delete>
+
+</mapper>

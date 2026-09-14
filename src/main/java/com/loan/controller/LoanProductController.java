@@ -22,10 +22,21 @@ public class LoanProductController {
      * 请求方式：GET /api/products
      */
     @GetMapping
-    @Operation(summary = "查看产品列表", description = "返回所有产品列表")
+    @Operation(summary = "查看产品列表", description = "返回所有上架产品列表（用户端使用）")
     public Result<List<LoanProductVO>> getProductList() {
         List<LoanProductVO> products = productService.getProductList();
-        return Result.success( products);
+        return Result.success(products);
+    }
+
+    @GetMapping("/admin")
+    @Operation(summary = "查看全部产品（管理端）", description = "返回所有产品（含已下架），仅管理员可调用")
+    public Result<List<LoanProductVO>> getAllProducts(jakarta.servlet.http.HttpServletRequest request) {
+        Object role = request.getAttribute("role");
+        if (role == null || !"admin".equals(role.toString())) {
+            return Result.error(403, "无权限");
+        }
+        List<LoanProductVO> products = productService.getAllProducts();
+        return Result.success(products);
     }
 
     /**

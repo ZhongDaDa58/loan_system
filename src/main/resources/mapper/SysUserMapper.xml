@@ -13,7 +13,8 @@
     </insert>
 
     <select id="selectById" resultType="com.loan.entity.SysUser">
-        SELECT user_id , phone, real_name , role, status,kyc_status
+        SELECT user_id, phone, real_name, role, status, kyc_status,
+               create_time AS createTime, update_time AS updateTime
         FROM sys_user
         WHERE user_id = #{userId}
     </select>
@@ -31,4 +32,88 @@
     <update id="updateKycStatus">
         UPDATE sys_user SET kyc_status = #{status}, user_real_name = #{realName} WHERE user_id = #{userId}
     </update>
+
+    <update id="updateUserStatus">
+        UPDATE sys_user SET status = #{status}, update_time = CURRENT_TIMESTAMP WHERE user_id = #{userId}
+    </update>
+
+    <update id="updatePassword">
+        UPDATE sys_user SET password = #{password}, update_time = CURRENT_TIMESTAMP WHERE user_id = #{userId}
+    </update>
+
+    <!-- ========== 用户管理模块 ========== -->
+
+    <select id="selectUserList" resultType="com.loan.entity.vo.UserItemVO">
+        SELECT
+            su.user_id AS userId,
+            su.phone,
+            CASE
+                WHEN su.kyc_status = 1 THEN COALESCE(ui.user_real_name, su.real_name)
+                ELSE ''
+            END AS name,
+            su.real_name AS nickname,
+            CASE su.kyc_status
+                WHEN 1 THEN 'verified'
+                WHEN 2 THEN 'verifying'
+                ELSE 'unverified'
+            END AS verifyStatus,
+            su.status,
+            ucs.credit_score AS creditScore,
+            su.create_time AS registerTime,
+            su.update_time AS lastLoginTime
+        FROM sys_user su
+        LEFT JOIN user_credit_score ucs ON su.user_id = ucs.user_id
+        LEFT JOIN user_identity ui ON su.user_id = ui.user_id
+        WHERE su.role != 'admin'
+        <if test="phone != null and phone != ''">
+            AND su.phone LIKE CONCAT('%', #{phone}, '%')
+        </if>
+        <if test="name != null and name != ''">
+            AND su.real_name LIKE CONCAT('%', #{name}, '%')
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND su.create_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND su.create_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        <if test="kycStatus != null">
+            AND su.kyc_status = #{kycStatus}
+        </if>
+        <if test="sortBy != null and sortBy != '' and sortOrder != null and sortOrder != ''">
+            ORDER BY
+            <choose>
+                <when test="sortBy == 'registerTime'">su.create_time</when>
+                <when test="sortBy == 'creditScore'">ucs.credit_score</when>
+                <otherwise>su.create_time</otherwise>
+            </choose>
+            <choose>
+                <when test="sortOrder == 'asc'">ASC</when>
+                <otherwise>DESC</otherwise>
+            </choose>
+        </if>
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <select id="countUserList" resultType="long">
+        SELECT COUNT(1)
+        FROM sys_user su
+        WHERE su.role != 'admin'
+        <if test="phone != null and phone != ''">
+            AND su.phone LIKE CONCAT('%', #{phone}, '%')
+        </if>
+        <if test="name != null and name != ''">
+            AND su.real_name LIKE CONCAT('%', #{name}, '%')
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND su.create_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND su.create_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        <if test="kycStatus != null">
+            AND su.kyc_status = #{kycStatus}
+        </if>
+    </select>
+
 </mapper>

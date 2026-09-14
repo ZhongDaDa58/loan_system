@@ -13,6 +13,9 @@ import com.loan.entity.vo.loanDetail.LoanApplicationBasicVO;
 import com.loan.entity.vo.loanDetail.LoanApplicationDetailVO;
 import com.loan.entity.vo.loanDetail.ScorecardDetailVO;
 import com.loan.exception.BusinessException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.loan.mapper.*;
 import com.loan.service.*;
 import com.loan.util.IdUtil;
@@ -67,6 +70,9 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private UserIdentityMapper userIdentityMapper;
 
+    @Resource
+    private UserCreditProfileMapper userCreditProfileMapper;
+
 
     @Override
     public Result<?> submitApply(LoanApplyDTO applyDTO, String userId) {
@@ -111,7 +117,13 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
             log.info("ℹ️ 用户未指定放款银行卡，将使用默认卡");
         }
 
-        UserProfileDTO userProfile = buildUserProfileFromApplyDTO(applyDTO);
+        // 从信用档案读取个人特征数据（无需重复填写）
+        UserCreditProfile creditProfile = userCreditProfileMapper.selectByUserId(userId);
+        if (creditProfile == null || creditProfile.getCreditScore() == null) {
+            throw new BusinessException(400, "请先创建信用档案，完善个人信息后再申请贷款");
+        }
+
+        UserProfileDTO userProfile = buildUserProfileFromProfile(creditProfile);
 
         log.info("🔍 开始调用评分卡模型计算分数...");
         Integer scorecardScore = scorecardService.calculateScoreOnly(userProfile);
@@ -319,6 +331,9 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
         creditScoreSyncService.syncScorecardToCreditScore(userId, scorecardScore, application.getApplicationId());
 
+        // 自动保存/更新信用档案（下次申请无需重复填写）
+        autoSaveCreditProfile(userId, basicInfo, userProfile, scorecardScore);
+
         String message;
         if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
             message = String.format("评分卡自动通过（得分：%d），申请已批准", scorecardScore);
@@ -329,6 +344,76 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         }
 
         return Result.success(message);
+    }
+
+    /**
+     * 自动保存/更新信用档案
+     */
+    private void autoSaveCreditProfile(String userId, UserBasicInfoDTO basicInfo,
+                                        UserProfileDTO userProfile, Integer scorecardScore) {
+        try {
+            UserCreditProfile existing = userCreditProfileMapper.selectByUserId(userId);
+            boolean isNew = (existing == null);
+
+            if (isNew) {
+                existing = new UserCreditProfile();
+                existing.setUserId(userId);
+                existing.setCreateTime(new Date());
+            }
+
+            // 个人信息
+            UserBasicInfoDTO.PersonalInfo p = basicInfo.getPersonalInfo();
+            if (p != null) {
+                existing.setName(p.getName());
+                existing.setIdCard(p.getIdCard());
+                existing.setPhone(p.getPhone());
+                existing.setEmail(p.getEmail());
+                existing.setGender(p.getGender());
+                existing.setEducation(p.getEducation());
+                existing.setOccupation(p.getOccupation());
+                if (p.getBirthDate() != null) {
+                    existing.setBirthDate(java.sql.Date.valueOf(p.getBirthDate()));
+                }
+            }
+
+            // JSON 序列化（注册 JavaTimeModule 支持 LocalDate）
+            try {
+                ObjectMapper om = new ObjectMapper()
+                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+                        .registerModule(new JavaTimeModule());
+                if (basicInfo.getFamilyInfo() != null) {
+                    existing.setFamilyInfo(om.writeValueAsString(basicInfo.getFamilyInfo()));
+                }
+                if (basicInfo.getFinancialInfo() != null) {
+                    existing.setFinancialInfo(om.writeValueAsString(basicInfo.getFinancialInfo()));
+                }
+                if (basicInfo.getEmploymentInfo() != null) {
+                    existing.setEmploymentInfo(om.writeValueAsString(basicInfo.getEmploymentInfo()));
+                }
+            } catch (Exception e) {
+                log.warn("序列化档案 JSON 失败: {}", e.getMessage());
+            }
+
+            // 评分特征
+            existing.setAge(userProfile.getAge());
+            existing.setDebtRatio(userProfile.getDebtRatio());
+            existing.setMonthlyIncome(userProfile.getMonthlyIncome());
+            existing.setCreditLines(userProfile.getCreditLines());
+            existing.setDependents(userProfile.getDependents());
+            existing.setRevolvingUtil(userProfile.getRevolvingUtil());
+            existing.setCreditScore(scorecardScore);
+            existing.setUpdateTime(new Date());
+
+            if (isNew) {
+                userCreditProfileMapper.insert(existing);
+            } else {
+                userCreditProfileMapper.update(existing);
+            }
+
+            log.info("✅ 信用档案已自动{}", isNew ? "创建" : "更新");
+        } catch (Exception e) {
+            log.warn("⚠️ 自动保存信用档案失败（不影响申请）: {}", e.getMessage());
+        }
     }
 
     @Override
@@ -719,14 +804,17 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
                 return "未知";
         }
     }
-    private UserProfileDTO buildUserProfileFromApplyDTO(LoanApplyDTO applyDTO) {
+    /**
+     * 从信用档案构建评分所需的 UserProfileDTO
+     */
+    private UserProfileDTO buildUserProfileFromProfile(UserCreditProfile profile) {
         UserProfileDTO userProfile = new UserProfileDTO();
-        userProfile.setRevolvingUtil(applyDTO.getRevolvingUtil());
-        userProfile.setAge(applyDTO.getAge());
-        userProfile.setDebtRatio(applyDTO.getDebtRatio());
-        userProfile.setMonthlyIncome(applyDTO.getMonthlyIncome());
-        userProfile.setCreditLines(applyDTO.getCreditLines());
-        userProfile.setDependents(applyDTO.getDependents());
+        userProfile.setRevolvingUtil(profile.getRevolvingUtil() != null ? profile.getRevolvingUtil() : BigDecimal.ZERO);
+        userProfile.setAge(profile.getAge() != null ? profile.getAge() : 18);
+        userProfile.setDebtRatio(profile.getDebtRatio() != null ? profile.getDebtRatio() : BigDecimal.ZERO);
+        userProfile.setMonthlyIncome(profile.getMonthlyIncome());
+        userProfile.setCreditLines(profile.getCreditLines() != null ? profile.getCreditLines() : 0);
+        userProfile.setDependents(profile.getDependents() != null ? profile.getDependents() : 0);
         return userProfile;
     }
 

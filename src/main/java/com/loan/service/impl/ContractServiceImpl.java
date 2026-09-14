@@ -11,6 +11,7 @@ import com.loan.mapper.UserSignatureMapper;
 import com.loan.service.ContractService;
 import com.loan.util.FileStorageUtil;
 import com.loan.util.PdfGeneratorUtil;
+import org.springframework.core.io.ClassPathResource;
 import jakarta.annotation.Resource;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -58,18 +59,8 @@ public class ContractServiceImpl implements ContractService {
             return Result.error(400, "用户未完成实名认证");
         }
 
-        // 1. 准备 Thymeleaf 上下文
-        Context context = new Context();
-        context.setVariable("contractNo", "LOAN-" + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE) + "-" + applicationId.substring(0, 4));
-        context.setVariable("borrowerName", identity.getUserRealName());
-        context.setVariable("idCard", identity.getIdCardNumber());
-        context.setVariable("amount", application.getApplyAmount());
-        context.setVariable("term", application.getApplyTerm());
-        context.setVariable("rate", "12.5"); // 实际应从产品表获取
-        context.setVariable("signDate", LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日")));
-
-        // 2. 渲染 HTML 并生成基础 PDF
-        String htmlContent = templateEngine.process("contract_template", context);
+        // 1. 生成 HTML（草稿不含签名和公章，日期为空）
+        String htmlContent = buildContractHtml(application, null, null);
         String fileName = "draft_" + applicationId + ".pdf";
         File outputFile = new File(storagePath + fileName);
 
@@ -99,19 +90,21 @@ public class ContractServiceImpl implements ContractService {
             // 1. 获取用户默认签名
             UserSignature signature = userSignatureMapper.selectDefaultByUserId(application.getUserId());
             String signatureBase64 = null;
-            if (signature != null) {
+            if (signature != null && signature.getSignatureImageUrl() != null) {
                 signatureBase64 = fileStorageUtil.getSignatureBase64(signature.getSignatureImageUrl());
             }
 
-            // 2. 在草稿 PDF 上添加用户签名 (不传公章路径)
-            String sourcePath = storagePath + application.getContractPath().replace("/contracts/", "");
-            PdfGeneratorUtil.addSignatures(sourcePath, signatureBase64, null, sourcePath);
+            // 2. 重新渲染 HTML（嵌入签名图片，排版引擎自动定位到签字栏横线上方）
+            String signDateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
+            String fileName = application.getContractPath().replace("/contracts/", "");
+            String htmlContent = buildContractHtml(application, signatureBase64, null,
+                    signDateStr, null);
+            String filePath = storagePath + fileName;
+            PdfGeneratorUtil.regeneratePdf(htmlContent, filePath);
 
-            // 3. 更新状态为“已签署” (2) 并记录时间；合同签署状态由 contractStatus 表示，申请整体状态继续使用 applicationStatus
+            // 3. 更新状态为"已签署"，记录签署时间
             loanApplicationMapper.updateContractStatus(applicationId, 2);
-            // 记录签署时间
-            // 如果需要，可在 mapper 添加 updateSignTime 方法；目前 LoanApplication.signTime 字段可由触发方补充
-            // 可以在 Mapper 中增加一个 updateSignTime 方法
+            loanApplicationMapper.updateSignTime(applicationId, new java.util.Date());
 
             return Result.success("签署成功");
         } catch (Exception e) {
@@ -128,16 +121,36 @@ public class ContractServiceImpl implements ContractService {
         }
 
         try {
-            String sourcePath = storagePath + application.getContractPath().replace("/contracts/", "");
+            String fileName = application.getContractPath().replace("/contracts/", "");
+            String filePath = storagePath + fileName;
 
-            // 1. 在已签名的 PDF 上添加平台公章
-            String stampPath = "stamps/company_stamp.png";
-            PdfGeneratorUtil.addSignatures(sourcePath, null, stampPath, sourcePath);
+            // 1. 加载公章图片为 Base64
+            ClassPathResource stampResource = new ClassPathResource("stamps/company_stamp.png");
+            byte[] stampBytes = java.nio.file.Files.readAllBytes(stampResource.getFile().toPath());
+            String stampBase64 = "data:image/png;base64," +
+                    java.util.Base64.getEncoder().encodeToString(stampBytes);
 
-            // 2. 计算最终法律效力 Hash 并更新状态为“已生效” (3)
-            String finalHash = calculateFileHash(new File(sourcePath));
+            // 2. 重新获取用户签名（保持签名不丢失）
+            UserSignature signature = userSignatureMapper.selectDefaultByUserId(application.getUserId());
+            String signatureBase64 = null;
+            if (signature != null && signature.getSignatureImageUrl() != null) {
+                signatureBase64 = fileStorageUtil.getSignatureBase64(signature.getSignatureImageUrl());
+            }
+
+            // 3. 重新渲染 HTML（签名+公章都由排版引擎自动定位）
+            String signDateStr = application.getSignTime() != null
+                    ? new java.text.SimpleDateFormat("yyyy年MM月dd日").format(application.getSignTime())
+                    : null;
+            String stampDateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
+            String htmlContent = buildContractHtml(application, signatureBase64, stampBase64,
+                    signDateStr, stampDateStr);
+            PdfGeneratorUtil.regeneratePdf(htmlContent, filePath);
+
+            // 4. 计算 Hash 并更新状态
+            String finalHash = calculateFileHash(new File(filePath));
             loanApplicationMapper.updateContractHash(applicationId, finalHash);
             loanApplicationMapper.updateContractStatus(applicationId, 3);
+            loanApplicationMapper.updateStampTime(applicationId, new java.util.Date());
 
             return Result.success("平台盖章成功，合同已生效");
         } catch (Exception e) {
@@ -154,6 +167,38 @@ public class ContractServiceImpl implements ContractService {
 
         // 返回完整的对象，前端可以根据 contractStatus 字段判断进度
         return Result.success(application);
+    }
+
+    /**
+     * 构建合同 HTML（可嵌入签名和公章图片）
+     */
+    private String buildContractHtml(LoanApplication application,
+                                      String signatureBase64, String stampBase64) {
+        return buildContractHtml(application, signatureBase64, stampBase64, null, null);
+    }
+
+    private String buildContractHtml(LoanApplication application,
+                                      String signatureBase64, String stampBase64,
+                                      String signDate, String stampDate) {
+        UserIdentity identity = userIdentityMapper.selectByUserId(application.getUserId());
+
+        String now = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy年MM月dd日"));
+
+        Context context = new Context();
+        context.setVariable("contractNo", "LOAN-"
+                + LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE)
+                + "-" + application.getApplicationId().substring(0, 4));
+        context.setVariable("borrowerName", identity != null ? identity.getUserRealName() : "");
+        context.setVariable("idCard", identity != null ? identity.getIdCardNumber() : "");
+        context.setVariable("amount", application.getApplyAmount());
+        context.setVariable("term", application.getApplyTerm());
+        context.setVariable("rate", "12.5");
+        context.setVariable("signDate", signDate != null ? signDate : "");
+        context.setVariable("stampDate", stampDate != null ? stampDate : "");
+        context.setVariable("signatureImage", signatureBase64);  // 嵌入签名
+        context.setVariable("stampImage", stampBase64);          // 嵌入公章
+
+        return templateEngine.process("contract_template", context);
     }
 
     private String calculateFileHash(File file) throws Exception {

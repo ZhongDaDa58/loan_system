@@ -1,0 +1,481 @@
+$ .\mvnw.cmd compile -q 2>&1
+[exit 1]
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::staticFieldBase has been called by com.google.inject.internal.aop.HiddenClassDefiner (file:/C:/Users/zhong/.m2/wrapper/dists/apache-maven-3.9.11/03d7e36a140982eea48e22c1dcac01d8862b2550b2939e09a0809bbc5182a5bc/lib/guice-5.1.0-classes.jar)
+WARNING: Please consider reporting this to the maintainers of class com.google.inject.internal.aop.HiddenClassDefiner
+WARNING: sun.misc.Unsafe::staticFieldBase will be removed in a future release
+[ERROR] COMPILATION ERROR : 
+[ERROR] /D:/code/loan/src/main/java/com/loan/controller/FileController.java:[8,1] jakarta.annotation.Resource的 single-type-import 已定义具有相同简名的类型
+[ERROR] /D:/code/loan/src/main/java/com/loan/controller/FileController.java:[24,27] 对Resource的引用不明确
+  jakarta.annotation 中的类 jakarta.annotation.Resource 和 org.springframework.core.io 中的接口 org.springframework.core.io.Resource 都匹配
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[19,16] 无法推断com.loan.entity.vo.Result<>的类型参数
+  原因: 无法推断类型变量 T
+    (实际参数列表和形式参数列表长度不同)
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[24,16] 无法推断com.loan.entity.vo.Result<>的类型参数
+  原因: 无法推断类型变量 T
+    (实际参数列表和形式参数列表长度不同)
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[29,16] 无法推断com.loan.entity.vo.Result<>的类型参数
+  原因: 无法推断类型变量 T
+    (实际参数列表和形式参数列表长度不同)
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[34,30] 找不到符号
+  符号:   方法 getCode()
+  位置: 类型为com.loan.exception.BusinessException的变量 e
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[34,43] 找不到符号
+  符号:   方法 getMsg()
+  位置: 类型为com.loan.exception.BusinessException的变量 e
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/LoanApplication.java:[108,47] 找不到符号
+  符号:   方法 getDesc()
+  位置: 类型为com.loan.entity.enums.ApplicationStatusEnum的变量 statusEnum
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[58,43] 找不到符号
+  符号:   方法 getAgreementId()
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[58,77] 找不到符号
+  符号:   方法 getAgreementId()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[59,15] 找不到符号
+  符号:   方法 setHasSigned(boolean)
+  位置: 类型为com.loan.entity.vo.AgreementVO的变量 vo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[64,45] 找不到符号
+  符号:   方法 getAgreementId()
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[64,79] 找不到符号
+  符号:   方法 getAgreementId()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[66,63] 找不到符号
+  符号:   方法 getSignTime()
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[88,11] 找不到符号
+  符号:   方法 setHasSigned(boolean)
+  位置: 类型为com.loan.entity.vo.AgreementVO的变量 vo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[90,32] 找不到符号
+  符号:   方法 getSignTime()
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[107,22] 找不到符号
+  符号:   方法 getIsCurrent()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[119,13] 找不到符号
+  符号:   方法 setUserId(java.lang.String)
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[120,13] 找不到符号
+  符号:   方法 setAgreementId(java.lang.Long)
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[121,40] 找不到符号
+  符号:   方法 getAgreementType()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[122,43] 找不到符号
+  符号:   方法 getVersion()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[123,13] 找不到符号
+  符号:   方法 setSignatureImageUrl(java.lang.String)
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[124,13] 找不到符号
+  符号:   方法 setSignTime(java.util.Date)
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[125,13] 找不到符号
+  符号:   方法 setIpAddress(java.lang.String)
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[126,13] 找不到符号
+  符号:   方法 setDeviceInfo(deviceInfo[...]"Web")
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[127,13] 找不到符号
+  符号:   方法 setIsValid(int)
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[164,74] 找不到符号
+  符号:   方法 getAgreementId()
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[167,19] 找不到符号
+  符号:   方法 setHasSigned(boolean)
+  位置: 类型为com.loan.entity.vo.AgreementVO的变量 vo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[168,36] 找不到符号
+  符号:   方法 getSignTime()
+  位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[182,36] 找不到符号
+  符号:   方法 getAgreementId()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[183,38] 找不到符号
+  符号:   方法 getAgreementType()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[184,63] 找不到符号
+  符号:   方法 getAgreementType()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[185,32] 找不到符号
+  符号:   方法 getVersion()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[186,30] 找不到符号
+  符号:   方法 getTitle()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[187,32] 找不到符号
+  符号:   方法 getSummary()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[188,32] 找不到符号
+  符号:   方法 getContent()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[189,38] 找不到符号
+  符号:   方法 getEffectiveDate()
+  位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/config/LoginInterceptor.java:[49,33] 找不到符号
+  符号:   方法 getStatus()
+  位置: 类型为com.loan.entity.SysUser的变量 user
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[25,49] 找不到符号
+  符号:   方法 getPersonalInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[29,47] 找不到符号
+  符号:   方法 getPersonalInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[32,61] 找不到符号
+  符号:   方法 getFamilyInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[36,28] 找不到符号
+  符号:   方法 getFinancialInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[37,28] 找不到符号
+  符号:   方法 getEmploymentInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[41,62] 找不到符号
+  符号:   方法 getFinancialInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[44,70] 找不到符号
+  符号:   方法 getFinancialInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[47,63] 找不到符号
+  符号:   方法 getFinancialInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[51,24] 找不到符号
+  符号:   方法 setAge(java.lang.Integer)
+  位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[52,24] 找不到符号
+  符号:   方法 setDependents(java.lang.Integer)
+  位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[53,24] 找不到符号
+  符号:   方法 setMonthlyIncome(java.math.BigDecimal)
+  位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[54,24] 找不到符号
+  符号:   方法 setDebtRatio(java.math.BigDecimal)
+  位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[55,24] 找不到符号
+  符号:   方法 setRevolvingUtil(java.math.BigDecimal)
+  位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[56,24] 找不到符号
+  符号:   方法 setCreditLines(java.lang.Integer)
+  位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[58,48] 找不到符号
+  符号:   方法 getPersonalInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[72,50] 找不到符号
+  符号:   方法 getMaritalStatus()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[73,30] 找不到符号
+  符号:   方法 getSpouseInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[77,23] 找不到符号
+  符号:   方法 getChildrenList()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[78,32] 找不到符号
+  符号:   方法 getChildrenList()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[81,23] 找不到符号
+  符号:   方法 getParentsInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[82,32] 找不到符号
+  符号:   方法 getParentsInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[88,23] 找不到符号
+  符号:   方法 getOtherDependents()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[89,32] 找不到符号
+  符号:   方法 getOtherDependents()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[105,31] 找不到符号
+  符号:   方法 getMonthlySalary()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.EmploymentInfo的变量 employmentInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[106,61] 找不到符号
+  符号:   方法 getMonthlySalary()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.EmploymentInfo的变量 employmentInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[108,31] 找不到符号
+  符号:   方法 getAdditionalIncome()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.EmploymentInfo的变量 employmentInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[109,61] 找不到符号
+  符号:   方法 getAdditionalIncome()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.EmploymentInfo的变量 employmentInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[113,51] 找不到符号
+  符号:   方法 getIncomeSources()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[114,51] 找不到符号
+  符号:   方法 getIncomeSources()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[116,26] 方法引用无效
+  找不到符号
+    符号:   方法 getMonthlyAmount()
+    位置: 类 com.loan.entity.dto.UserBasicInfoDTO.IncomeSource
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[129,51] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[130,33] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[134,55] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[135,22] 方法引用无效
+  找不到符号
+    符号:   方法 getMonthlyPayment()
+    位置: 类 com.loan.entity.dto.UserBasicInfoDTO.LiabilityInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[153,51] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[154,33] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[159,52] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[162,22] 方法引用无效
+  找不到符号
+    符号:   方法 getTotalAmount()
+    位置: 类 com.loan.entity.dto.UserBasicInfoDTO.LiabilityInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[168,45] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[171,22] 方法引用无效
+  找不到符号
+    符号:   方法 getMonthlyPayment()
+    位置: 类 com.loan.entity.dto.UserBasicInfoDTO.LiabilityInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[187,51] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[191,41] 找不到符号
+  符号:   方法 getLiabilityInfo()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[223,51] 找不到符号
+  符号:   方法 getIncomeSources()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[227,29] 找不到符号
+  符号:   方法 getIncomeSources()
+  位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FinancialInfo的变量 financialInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[228,22] 方法引用无效
+  找不到符号
+    符号:   方法 getMonthlyAmount()
+    位置: 类 com.loan.entity.dto.UserBasicInfoDTO.IncomeSource
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/dto/FeatureTransformationResultDTO.java:[24,46] 找不到符号
+  符号:   方法 builder()
+  位置: 类 com.loan.entity.dto.FeatureTransformationResultDTO
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/dto/FeatureTransformationResultDTO.java:[32,46] 找不到符号
+  符号:   方法 builder()
+  位置: 类 com.loan.entity.dto.FeatureTransformationResultDTO
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/CreditScoreServiceImpl.java:[28,24] 找不到符号
+  符号:   方法 setUserId(java.lang.String)
+  位置: 类型为com.loan.entity.UserCreditScore的变量 creditScore
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/CreditScoreServiceImpl.java:[29,24] 找不到符号
+  符号:   方法 setCreditScore(int)
+  位置: 类型为com.loan.entity.UserCreditScore的变量 creditScore
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/CreditScoreServiceImpl.java:[34,44] 找不到符号
+  符号:   方法 getCreditScore()
+  位置: 类型为com.loan.entity.UserCreditScore的变量 creditScore
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/CreditScoreServiceImpl.java:[35,59] 找不到符号
+  符号:   方法 getCreditScore()
+  位置: 类型为com.loan.entity.UserCreditScore的变量 creditScore
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/CreditScoreServiceImpl.java:[50,24] 找不到符号
+  符号:   方法 setUserId(java.lang.String)
+  位置: 类型为com.loan.entity.UserCreditScore的变量 userCreditScore
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/CreditScoreServiceImpl.java:[51,24] 找不到符号
+  符号:   方法 setCreditScore(java.lang.Integer)
+  位置: 类型为com.loan.entity.UserCreditScore的变量 userCreditScore
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[72,19] 找不到符号
+  符号:   方法 setList(java.util.List<com.loan.entity.vo.UserItemVO>)
+  位置: 类型为com.loan.entity.vo.PageResult<com.loan.entity.vo.UserItemVO>的变量 pageResult
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[73,19] 找不到符号
+  符号:   方法 setTotal(java.lang.Long)
+  位置: 类型为com.loan.entity.vo.PageResult<com.loan.entity.vo.UserItemVO>的变量 pageResult
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[74,19] 找不到符号
+  符号:   方法 setPage(java.lang.Integer)
+  位置: 类型为com.loan.entity.vo.PageResult<com.loan.entity.vo.UserItemVO>的变量 pageResult
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[75,19] 找不到符号
+  符号:   方法 setPageSize(java.lang.Integer)
+  位置: 类型为com.loan.entity.vo.PageResult<com.loan.entity.vo.UserItemVO>的变量 pageResult
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[95,26] 找不到符号
+  符号:   方法 getUserId()
+  位置: 类型为com.loan.entity.SysUser的变量 user
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[96,25] 找不到符号
+  符号:   方法 getPhone()
+  位置: 类型为com.loan.entity.SysUser的变量 user
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[98,28] 找不到符号
+  符号:   方法 getRealName()
+  位置: 类型为com.loan.entity.SysUser的变量 user
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[100,32] 找不到符号
+  符号:   方法 getKycStatus()
+  位置: 类型为com.loan.entity.SysUser的变量 user
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/UserManageServiceImpl.java:[100,63] 找不到符号
+  符号:   方法 getKycStatus()
+  位置: 类型为com.loan.entity.SysUser的变量 user
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-compiler-plugin:3.11.0:compile (default-compile) on project loan: Compilation failure: Compilation failure: 
+[ERROR] /D:/code/loan/src/main/java/com/loan/controller/FileController.java:[8,1] jakarta.annotation.Resource的 single-type-import 已定义具有相同简名的类型
+[ERROR] /D:/code/loan/src/main/java/com/loan/controller/FileController.java:[24,27] 对Resource的引用不明确
+[ERROR]   jakarta.annotation 中的类 jakarta.annotation.Resource 和 org.springframework.core.io 中的接口 org.springframework.core.io.Resource 都匹配
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[19,16] 无法推断com.loan.entity.vo.Result<>的类型参数
+[ERROR]   原因: 无法推断类型变量 T
+[ERROR]     (实际参数列表和形式参数列表长度不同)
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[24,16] 无法推断com.loan.entity.vo.Result<>的类型参数
+[ERROR]   原因: 无法推断类型变量 T
+[ERROR]     (实际参数列表和形式参数列表长度不同)
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[29,16] 无法推断com.loan.entity.vo.Result<>的类型参数
+[ERROR]   原因: 无法推断类型变量 T
+[ERROR]     (实际参数列表和形式参数列表长度不同)
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[34,30] 找不到符号
+[ERROR]   符号:   方法 getCode()
+[ERROR]   位置: 类型为com.loan.exception.BusinessException的变量 e
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/vo/Result.java:[34,43] 找不到符号
+[ERROR]   符号:   方法 getMsg()
+[ERROR]   位置: 类型为com.loan.exception.BusinessException的变量 e
+[ERROR] /D:/code/loan/src/main/java/com/loan/entity/LoanApplication.java:[108,47] 找不到符号
+[ERROR]   符号:   方法 getDesc()
+[ERROR]   位置: 类型为com.loan.entity.enums.ApplicationStatusEnum的变量 statusEnum
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[58,43] 找不到符号
+[ERROR]   符号:   方法 getAgreementId()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[58,77] 找不到符号
+[ERROR]   符号:   方法 getAgreementId()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[59,15] 找不到符号
+[ERROR]   符号:   方法 setHasSigned(boolean)
+[ERROR]   位置: 类型为com.loan.entity.vo.AgreementVO的变量 vo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[64,45] 找不到符号
+[ERROR]   符号:   方法 getAgreementId()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[64,79] 找不到符号
+[ERROR]   符号:   方法 getAgreementId()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[66,63] 找不到符号
+[ERROR]   符号:   方法 getSignTime()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[88,11] 找不到符号
+[ERROR]   符号:   方法 setHasSigned(boolean)
+[ERROR]   位置: 类型为com.loan.entity.vo.AgreementVO的变量 vo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[90,32] 找不到符号
+[ERROR]   符号:   方法 getSignTime()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[107,22] 找不到符号
+[ERROR]   符号:   方法 getIsCurrent()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[119,13] 找不到符号
+[ERROR]   符号:   方法 setUserId(java.lang.String)
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[120,13] 找不到符号
+[ERROR]   符号:   方法 setAgreementId(java.lang.Long)
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[121,40] 找不到符号
+[ERROR]   符号:   方法 getAgreementType()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[122,43] 找不到符号
+[ERROR]   符号:   方法 getVersion()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[123,13] 找不到符号
+[ERROR]   符号:   方法 setSignatureImageUrl(java.lang.String)
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[124,13] 找不到符号
+[ERROR]   符号:   方法 setSignTime(java.util.Date)
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[125,13] 找不到符号
+[ERROR]   符号:   方法 setIpAddress(java.lang.String)
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[126,13] 找不到符号
+[ERROR]   符号:   方法 setDeviceInfo(deviceInfo[...]"Web")
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[127,13] 找不到符号
+[ERROR]   符号:   方法 setIsValid(int)
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[164,74] 找不到符号
+[ERROR]   符号:   方法 getAgreementId()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[167,19] 找不到符号
+[ERROR]   符号:   方法 setHasSigned(boolean)
+[ERROR]   位置: 类型为com.loan.entity.vo.AgreementVO的变量 vo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[168,36] 找不到符号
+[ERROR]   符号:   方法 getSignTime()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreementSign的变量 sign
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[182,36] 找不到符号
+[ERROR]   符号:   方法 getAgreementId()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[183,38] 找不到符号
+[ERROR]   符号:   方法 getAgreementType()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[184,63] 找不到符号
+[ERROR]   符号:   方法 getAgreementType()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[185,32] 找不到符号
+[ERROR]   符号:   方法 getVersion()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[186,30] 找不到符号
+[ERROR]   符号:   方法 getTitle()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[187,32] 找不到符号
+[ERROR]   符号:   方法 getSummary()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[188,32] 找不到符号
+[ERROR]   符号:   方法 getContent()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/AgreementServiceImpl.java:[189,38] 找不到符号
+[ERROR]   符号:   方法 getEffectiveDate()
+[ERROR]   位置: 类型为com.loan.entity.UserAgreement的变量 agreement
+[ERROR] /D:/code/loan/src/main/java/com/loan/config/LoginInterceptor.java:[49,33] 找不到符号
+[ERROR]   符号:   方法 getStatus()
+[ERROR]   位置: 类型为com.loan.entity.SysUser的变量 user
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[25,49] 找不到符号
+[ERROR]   符号:   方法 getPersonalInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[29,47] 找不到符号
+[ERROR]   符号:   方法 getPersonalInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[32,61] 找不到符号
+[ERROR]   符号:   方法 getFamilyInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[36,28] 找不到符号
+[ERROR]   符号:   方法 getFinancialInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[37,28] 找不到符号
+[ERROR]   符号:   方法 getEmploymentInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[41,62] 找不到符号
+[ERROR]   符号:   方法 getFinancialInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[44,70] 找不到符号
+[ERROR]   符号:   方法 getFinancialInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[47,63] 找不到符号
+[ERROR]   符号:   方法 getFinancialInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[51,24] 找不到符号
+[ERROR]   符号:   方法 setAge(java.lang.Integer)
+[ERROR]   位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[52,24] 找不到符号
+[ERROR]   符号:   方法 setDependents(java.lang.Integer)
+[ERROR]   位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[53,24] 找不到符号
+[ERROR]   符号:   方法 setMonthlyIncome(java.math.BigDecimal)
+[ERROR]   位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[54,24] 找不到符号
+[ERROR]   符号:   方法 setDebtRatio(java.math.BigDecimal)
+[ERROR]   位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[55,24] 找不到符号
+[ERROR]   符号:   方法 setRevolvingUtil(java.math.BigDecimal)
+[ERROR]   位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[56,24] 找不到符号
+[ERROR]   符号:   方法 setCreditLines(java.lang.Integer)
+[ERROR]   位置: 类型为com.loan.entity.dto.UserProfileDTO的变量 userProfile
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[58,48] 找不到符号
+[ERROR]   符号:   方法 getPersonalInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO的变量 request
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[72,50] 找不到符号
+[ERROR]   符号:   方法 getMaritalStatus()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[73,30] 找不到符号
+[ERROR]   符号:   方法 getSpouseInfo()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[77,23] 找不到符号
+[ERROR]   符号:   方法 getChildrenList()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/com/loan/service/impl/FeatureTransformationServiceImpl.java:[78,32] 找不到符号
+[ERROR]   符号:   方法 getChildrenList()
+[ERROR]   位置: 类型为com.loan.entity.dto.UserBasicInfoDTO.FamilyInfo的变量 familyInfo
+[ERROR] /D:/code/loan/src/main/java/
+
+[… truncated 10110 chars …]

@@ -9,6 +9,11 @@ public interface LoanProductService {
 
     public List<LoanProductVO> getProductList();
 
+    /**
+     * 查询所有产品（含已下架，管理端使用）
+     */
+    public List<LoanProductVO> getAllProducts();
+
     public LoanProductVO getProductDetail(String productId);
     
     /**

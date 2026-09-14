@@ -155,14 +155,19 @@ public class FeatureTransformationServiceImpl implements FeatureTransformationSe
             return BigDecimal.ZERO;
         }
 
+        // 同时匹配英文 CREDIT_CARD 和中文 信用卡
         BigDecimal totalCreditLimit = financialInfo.getLiabilityInfo().stream()
-                .filter(liability -> "CREDIT_CARD".equalsIgnoreCase(liability.getLiabilityType()))
+                .filter(li -> "CREDIT_CARD".equalsIgnoreCase(li.getLiabilityType())
+                        || "信用卡".equals(li.getLiabilityType()))
                 .map(UserBasicInfoDTO.LiabilityInfo::getTotalAmount)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // ⚠️ 当前用 monthlyPayment 代替已用额度，数据上会偏低
+        // 后续如有已用额度字段可改为 usedAmount
         BigDecimal totalUsed = financialInfo.getLiabilityInfo().stream()
-                .filter(liability -> "CREDIT_CARD".equalsIgnoreCase(liability.getLiabilityType()))
+                .filter(li -> "CREDIT_CARD".equalsIgnoreCase(li.getLiabilityType())
+                        || "信用卡".equals(li.getLiabilityType()))
                 .map(UserBasicInfoDTO.LiabilityInfo::getMonthlyPayment)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
@@ -185,7 +190,9 @@ public class FeatureTransformationServiceImpl implements FeatureTransformationSe
 
         long creditLines = financialInfo.getLiabilityInfo().stream()
                 .filter(liability -> "CREDIT_CARD".equalsIgnoreCase(liability.getLiabilityType())
-                        || "LOAN".equalsIgnoreCase(liability.getLiabilityType()))
+                        || "信用卡".equals(liability.getLiabilityType())
+                        || "LOAN".equalsIgnoreCase(liability.getLiabilityType())
+                        || "消费贷".equals(liability.getLiabilityType()))
                 .count();
 
         log.debug("🔢 信用额度数量计算结果: {}", creditLines);

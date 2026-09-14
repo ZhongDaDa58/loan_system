@@ -20,6 +20,7 @@ import com.loan.mapper.SysUserMapper;
 import com.loan.mapper.UserBankCardMapper;
 import com.loan.service.ContractService;
 import com.loan.service.LoanIssueService;
+import com.loan.service.NotificationService;
 import com.loan.util.IdUtil;
 import com.loan.util.PayIntegrationUtil;
 import com.loan.util.RepaymentCalculationUtil;
@@ -63,6 +64,9 @@ public class LoanIssueServiceImpl implements LoanIssueService {
 
     @Resource
     private ContractService contractService; // ⭐ 注入合同服务
+
+    @Resource
+    private NotificationService notificationService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -147,6 +151,19 @@ public class LoanIssueServiceImpl implements LoanIssueService {
 
         // 5. 更新申请状态为“已放款”
         loanApplicationMapper.updateStatus(applicationId, "issued");
+
+        // 6. 发送放款成功通知
+        try {
+            notificationService.sendNotification(
+                    application.getUserId(),
+                    "放款成功通知",
+                    "您的贷款 " + issueAmount + " 元已成功发放" + cardInfo + "，请按时还款，维护良好信用。",
+                    "system",
+                    applicationId
+            );
+        } catch (Exception e) {
+            log.warn("发送放款通知失败: {}", e.getMessage());
+        }
 
         return Result.success("放款成功，已自动生成还款计划，当前账户余额：" + currentBalance + "元" + cardInfo);
     }

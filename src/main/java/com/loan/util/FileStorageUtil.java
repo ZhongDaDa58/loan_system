@@ -15,8 +15,9 @@ import java.util.UUID;
 @Component
 public class FileStorageUtil {
 
-    private static final String SIGNATURE_DIR = "src/main/resources/static/signatures/";
-    private static final String CONTRACT_DIR = "src/main/resources/static/contracts/";
+    private static final String UPLOAD_DIR = "uploads/";
+    private static final String SIGNATURE_DIR = UPLOAD_DIR + "signatures/";
+    private static final String CONTRACT_DIR = UPLOAD_DIR + "contracts/";
 
     /**
      * 保存签名图片
@@ -42,7 +43,7 @@ public class FileStorageUtil {
         Path filePath = Paths.get(fullPath + fileName);
         Files.write(filePath, imageBytes);
 
-        // 5. 返回访问URL
+        // 5. 返回相对路径
         return "/signatures/" + dateDir + "/" + fileName;
     }
 
@@ -83,8 +84,7 @@ public class FileStorageUtil {
             return null;
         }
 
-        // 假设图片存储在 static 目录下，根据你实际的路径配置调整
-        String fullPath = "src/main/resources/static" + imagePath;
+        String fullPath = UPLOAD_DIR.substring(0, UPLOAD_DIR.length() - 1) + imagePath;
         File file = new File(fullPath);
 
         if (!file.exists()) {

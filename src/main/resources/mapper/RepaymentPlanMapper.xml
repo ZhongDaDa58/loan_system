@@ -69,10 +69,23 @@
             rp.create_time AS createTime,
             (SELECT COUNT(*) FROM monthly_repayment mr
              WHERE mr.plan_id = rp.plan_id
-               AND mr.repayment_status = 'overdue') AS overdueCount
+               AND mr.repayment_status = 'overdue') AS overdueCount,
+            (SELECT COALESCE(SUM(mr.repayment_amount), 0) FROM monthly_repayment mr
+             WHERE mr.plan_id = rp.plan_id
+               AND mr.repayment_status = 'paid') AS paidAmount,
+            (SELECT COALESCE(SUM(mr.repayment_amount), 0) FROM monthly_repayment mr
+             WHERE mr.plan_id = rp.plan_id
+               AND mr.repayment_status = 'unpaid') AS unpaidAmount,
+            (SELECT COALESCE(SUM(mr.repayment_amount), 0) FROM monthly_repayment mr
+             WHERE mr.plan_id = rp.plan_id
+               AND mr.repayment_status = 'overdue') AS overdueAmount
         FROM repayment_plan rp
                  LEFT JOIN sys_user su ON rp.user_id = su.user_id
         ORDER BY rp.create_time DESC
+    </select>
+
+    <select id="selectUserIdByPlanId" resultType="string">
+        SELECT user_id FROM repayment_plan WHERE plan_id = #{planId} LIMIT 1
     </select>
 
 </mapper>

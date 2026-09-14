@@ -20,4 +20,9 @@ public class RepaymentPlanListVO {
     private Date createTime;        // 创建时间
     private Boolean hasOverdue;     // 是否有逾期
     private Integer overdueCount;   // 逾期期数
+
+    // ===== 扩展字段 =====
+    private BigDecimal paidAmount;      // 已还金额
+    private BigDecimal unpaidAmount;    // 待还金额
+    private BigDecimal overdueAmount;   // 逾期金额
 }

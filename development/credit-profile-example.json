@@ -1,0 +1,119 @@
+{
+  "name": "张三",
+  "idCard": "110101199005151234",
+  "phone": "13800138000",
+  "email": "zhangsan@example.com",
+  "birthDate": "1990-05-16",
+  "gender": "男",
+  "education": "本科",
+  "occupation": "软件工程师",
+  "familyInfo": {
+    "maritalStatus": "已婚",
+    "spouseInfo": {
+      "name": "李丽",
+      "birthDate": "1992-08-21",
+      "occupation": "教师",
+      "monthlyIncome": 8000
+    },
+    "childrenList": [
+      {
+        "name": "张小宝",
+        "birthDate": "2018-06-01",
+        "relationship": "儿子"
+      },
+      {
+        "name": "张小贝",
+        "birthDate": "2021-03-15",
+        "relationship": "女儿"
+      }
+    ],
+    "parentsInfo": [
+      {
+        "name": "张建国",
+        "birthDate": "1960-11-10",
+        "relationship": "父亲",
+        "isDependent": false
+      },
+      {
+        "name": "王秀英",
+        "birthDate": "1963-02-28",
+        "relationship": "母亲",
+        "isDependent": false
+      }
+    ],
+    "otherDependents": []
+  },
+  "financialInfo": {
+    "incomeSources": [
+      {
+        "type": "工资",
+        "monthlyAmount": 15000.00,
+        "description": "主职工资收入"
+      },
+      {
+        "type": "兼职",
+        "monthlyAmount": 3000.00,
+        "description": "周末培训讲师"
+      }
+    ],
+    "bankStatements": [
+      {
+        "bankName": "招商银行",
+        "accountNumber": "6225xxxxxxxx1234",
+        "monthlyBalances": [
+          {
+            "month": "2026-04",
+            "averageBalance": 50000.00,
+            "totalIncome": 18000.00,
+            "totalExpense": 8000.00
+          },
+          {
+            "month": "2026-03",
+            "averageBalance": 42000.00,
+            "totalIncome": 18000.00,
+            "totalExpense": 9000.00
+          }
+        ]
+      }
+    ],
+    "assetInfo": [
+      {
+        "assetType": "房产",
+        "description": "北京市朝阳区望京两居室",
+        "estimatedValue": 2000000.00,
+        "acquisitionDate": "2016-08-15"
+      },
+      {
+        "assetType": "车辆",
+        "description": "特斯拉Model 3",
+        "estimatedValue": 200000.00,
+        "acquisitionDate": "2020-01-10"
+      }
+    ],
+    "liabilityInfo": [
+      {
+        "liabilityType": "信用卡",
+        "creditor": "招商银行",
+        "totalAmount": 100000.00,
+        "monthlyPayment": 3000.00,
+        "dueDate": "2026-06-10"
+      },
+      {
+        "liabilityType": "消费贷",
+        "creditor": "借呗",
+        "totalAmount": 30000.00,
+        "monthlyPayment": 2600.00,
+        "dueDate": "2026-05-25"
+      }
+    ]
+  },
+  "employmentInfo": {
+    "companyName": "北京科技有限公司",
+    "position": "技术经理",
+    "workDurationYears": 8,
+    "industryType": "互联网",
+    "monthlySalary": 15000.00,
+    "additionalIncome": 3000.00,
+    "employmentType": "全职"
+  }
+}

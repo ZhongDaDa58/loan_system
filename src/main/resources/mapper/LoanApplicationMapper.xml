@@ -126,6 +126,18 @@
         WHERE application_id = #{applicationId}
     </update>
 
+    <!-- 更新用户签署时间 -->
+    <update id="updateSignTime">
+        UPDATE loan_application SET sign_time = #{signTime}, update_time = CURRENT_TIMESTAMP
+        WHERE application_id = #{applicationId}
+    </update>
+
+    <!-- 更新平台盖章时间 -->
+    <update id="updateStampTime">
+        UPDATE loan_application SET stamp_time = #{stampTime}, update_time = CURRENT_TIMESTAMP
+        WHERE application_id = #{applicationId}
+    </update>
+
     <!-- 更新最终哈希值 -->
     <update id="updateContractHash">
         UPDATE loan_application
@@ -170,4 +182,42 @@
         GROUP BY DATE_FORMAT(update_time, '%Y-%m-%d')
         ORDER BY DATE_FORMAT(update_time, '%Y-%m-%d') ASC
     </select>
+
+    <!-- ========== 贷款概况 ========== -->
+
+    <select id="selectLoanOverview" resultType="com.loan.entity.vo.LoanOverviewItemVO">
+        SELECT
+            la.application_id AS applicationId,
+            COALESCE(lp.product_name, '未知产品') AS productName,
+            la.apply_amount AS applyAmount,
+            la.apply_term AS applyTerm,
+            DATE_FORMAT(la.apply_time, '%Y-%m-%dT%H:%i:%s') AS applyTime,
+            la.application_status AS status,
+            lp.interest_rate AS interestRate
+        FROM loan_application la
+        LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+        WHERE la.user_id = #{userId}
+        ORDER BY la.apply_time DESC
+    </select>
+
+    <!-- ========== 历史借贷模块 ========== -->
+
+    <select id="selectLoanHistoryByUser" resultType="com.loan.entity.vo.loanDetail.LoanHistoryRecordVO">
+        SELECT
+            la.application_id AS applicationId,
+            lp.product_name AS productName,
+            la.apply_amount AS amount,
+            la.apply_term AS term,
+            la.application_status AS status,
+            DATE_FORMAT(la.apply_time, '%Y-%m-%d %H:%i:%s') AS applyTime,
+            DATE_FORMAT(li.issue_time, '%Y-%m-%d %H:%i:%s') AS disbursementTime
+        FROM loan_application la
+        LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+        LEFT JOIN loan_issue li ON la.application_id = li.application_id
+        WHERE la.user_id = #{userId}
+          AND la.apply_time &lt; #{beforeTime}
+          AND la.application_id != #{excludeAppId}
+        ORDER BY la.apply_time DESC
+    </select>
+
 </mapper>

@@ -9,6 +9,7 @@
             font-size: 12pt;
             line-height: 1.5;
             padding: 40px;
+            background-color: #ffffff;
         }
         .header { text-align: center; font-size: 18pt; font-weight: bold; margin-bottom: 30px; border-bottom: 2px solid #000; padding-bottom: 10px; }
         .section-title { font-weight: bold; margin-top: 20px; margin-bottom: 10px; font-size: 13pt; border-bottom: 1px solid #ccc; }
@@ -48,13 +49,19 @@
     <tr>
         <td>
             <strong>甲方（借款人签字）：</strong>
-            <div style="height: 60px;"></div>
-            <div class="sign-line">日期：</div>
+            <div th:if="${signatureImage != null}" style="text-align:center; margin:10px 0 0 0;">
+                <img th:src="${signatureImage}" style="width:140px;height:50px;" />
+            </div>
+            <div th:if="${signatureImage == null}" style="height: 50px;"></div>
+            <div class="sign-line">日期：<span th:text="${signDate != null ? signDate : ''}"></span></div>
         </td>
-        <td>
+        <td style="text-align:center;">
             <strong>乙方（平台盖章）：</strong>
-            <div style="font-weight: bold; margin-top: 10px;">[电子公章]</div>
-            <div class="sign-line">日期：</div>
+            <div th:if="${stampImage != null}" style="text-align:center; margin:10px 0 0 0;">
+                <img th:src="${stampImage}" style="height:50px;width:auto;background-color:#ffffff;" />
+            </div>
+            <div th:if="${stampImage == null}" style="height: 50px;"></div>
+            <div class="sign-line">日期：<span th:text="${stampDate != null ? stampDate : ''}"></span></div>
         </td>
     </tr>
 </table>

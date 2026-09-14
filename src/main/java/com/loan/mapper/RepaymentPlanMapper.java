@@ -20,4 +20,8 @@ public interface RepaymentPlanMapper {
 
     List<RepaymentPlanListVO> selectAllPlansWithUserInfo();
 
+    /**
+     * 根据计划ID查询用户ID
+     */
+    String selectUserIdByPlanId(@Param("planId") String planId);
 }

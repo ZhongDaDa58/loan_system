@@ -7,6 +7,8 @@ import com.loan.entity.vo.Result;
 import com.loan.entity.vo.loanDetail.ApplicantIdentityVO;
 import com.loan.entity.vo.loanDetail.LoanApplicationBasicVO;
 import com.loan.entity.vo.loanDetail.LoanApplicationDetailVO;
+import com.loan.entity.UserCreditProfile;
+import com.loan.entity.vo.loanDetail.LoanHistoryVO;
 import com.loan.entity.vo.loanDetail.ScorecardDetailVO;
 import com.loan.service.AuditService;
 import com.loan.service.LoanApplicationService;
@@ -87,5 +89,23 @@ public class AuditController {
     @Operation(summary = "查询评分卡结果详情", description = "查询申请的评分卡详细结果，包含总评分和六个核心维度的分数")
     public Result<ScorecardDetailVO> getScorecardDetail(@PathVariable String applicationId) {
         return loanApplicationService.getScorecardDetail(applicationId);
+    }
+
+    /**
+     * 查询申请人历史借贷（审批端使用）
+     */
+    @GetMapping("/{applicationId}/loan-history")
+    @Operation(summary = "查询申请人历史借贷", description = "返回当前申请之前的历史借贷汇总统计和明细记录")
+    public Result<LoanHistoryVO> getLoanHistory(@PathVariable String applicationId) {
+        return auditService.getLoanHistory(applicationId);
+    }
+
+    /**
+     * 查询申请人信用档案（审批端使用）
+     */
+    @GetMapping("/{applicationId}/credit-profile")
+    @Operation(summary = "查询申请人信用档案", description = "返回申请人的职业、资产、家庭、收入和信用评分等信息")
+    public Result<UserCreditProfile> getApplicantCreditProfile(@PathVariable String applicationId) {
+        return auditService.getApplicantCreditProfile(applicationId);
     }
 }

@@ -28,4 +28,20 @@
         UPDATE user_bank_card SET bind_status = 'UNBOUND' WHERE id = #{id}
     </update>
 
+    <!-- ========== 用户管理模块 ========== -->
+
+    <select id="selectUserBankCardVOByUserId" resultType="com.loan.entity.vo.UserBankCardVO">
+        SELECT
+            mbc.bank_name AS bankName,
+            ubc.card_number AS cardNumber,
+            CASE mbc.card_type WHEN 'DEBIT' THEN 'debit' WHEN 'CREDIT' THEN 'credit' ELSE 'debit' END AS cardType,
+            ubc.is_default AS isDefault,
+            ubc.bind_time AS bindTime,
+            CASE ubc.bind_status WHEN 'ACTIVE' THEN 'active' ELSE 'unbound' END AS status
+        FROM user_bank_card ubc
+        LEFT JOIN mock_bank_card_pool mbc ON ubc.pool_card_id = mbc.id
+        WHERE ubc.user_id = #{userId}
+        ORDER BY ubc.is_default DESC, ubc.bind_time DESC
+    </select>
+
 </mapper>

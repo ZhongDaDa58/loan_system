@@ -12,4 +12,100 @@
     <select id="selectByApplicationId" resultType="com.loan.entity.LoanIssue">
         SELECT issue_id FROM loan_issue WHERE application_id = #{applicationId}
     </select>
+
+    <!-- ========== 放款统计 ========== -->
+
+    <select id="selectSummary" resultType="com.loan.entity.vo.stats.DisbursementSummaryVO">
+        SELECT
+            COALESCE(SUM(li.issue_amount), 0) AS totalAmount,
+            COUNT(li.issue_id) AS totalCount,
+            COALESCE(ROUND(SUM(li.issue_amount) / NULLIF(COUNT(li.issue_id), 0), 2), 0) AS avgAmount,
+            COALESCE(SUM(CASE WHEN DATE(li.issue_time) = CURDATE() THEN li.issue_amount ELSE 0 END), 0) AS todayAmount
+        FROM loan_issue li
+        WHERE li.issue_status = 'SUCCESS'
+        <if test="startDate != null and startDate != ''">
+            AND li.issue_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND li.issue_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+    </select>
+
+    <select id="selectTrend" resultType="com.loan.entity.vo.stats.TrendPointVO">
+        SELECT
+            DATE_FORMAT(li.issue_time, '%Y-%m') AS month,
+            COALESCE(SUM(li.issue_amount), 0) AS amount,
+            COUNT(li.issue_id) AS count
+        FROM loan_issue li
+        WHERE li.issue_status = 'SUCCESS'
+        <if test="startDate != null and startDate != ''">
+            AND li.issue_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND li.issue_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        GROUP BY DATE_FORMAT(li.issue_time, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+    <select id="selectProductDistribution" resultType="com.loan.entity.vo.stats.ProductDistVO">
+        SELECT
+            COALESCE(lp.product_name, '未知产品') AS productName,
+            COALESCE(SUM(li.issue_amount), 0) AS amount,
+            COUNT(li.issue_id) AS count
+        FROM loan_issue li
+        INNER JOIN loan_application la ON li.application_id = la.application_id
+        LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+        WHERE li.issue_status = 'SUCCESS'
+        <if test="startDate != null and startDate != ''">
+            AND li.issue_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND li.issue_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        GROUP BY lp.product_id, lp.product_name
+        ORDER BY amount DESC
+    </select>
+
+    <select id="selectAmountDistribution" resultType="com.loan.entity.vo.stats.AmountDistVO">
+        SELECT
+            CASE
+                WHEN li.issue_amount &lt; 10000 THEN '0-1万'
+                WHEN li.issue_amount &lt; 30000 THEN '1-3万'
+                WHEN li.issue_amount &lt; 50000 THEN '3-5万'
+                WHEN li.issue_amount &lt; 100000 THEN '5-10万'
+                WHEN li.issue_amount &lt; 200000 THEN '10-20万'
+                WHEN li.issue_amount &lt; 500000 THEN '20-50万'
+                ELSE '50万以上'
+            END AS `range`,
+            COUNT(li.issue_id) AS count
+        FROM loan_issue li
+        WHERE li.issue_status = 'SUCCESS'
+        <if test="startDate != null and startDate != ''">
+            AND li.issue_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND li.issue_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        GROUP BY `range`
+        ORDER BY MIN(li.issue_amount) ASC
+    </select>
+
+    <select id="selectTermDistribution" resultType="com.loan.entity.vo.stats.TermDistVO">
+        SELECT
+            la.apply_term AS term,
+            COUNT(li.issue_id) AS count
+        FROM loan_issue li
+        INNER JOIN loan_application la ON li.application_id = la.application_id
+        WHERE li.issue_status = 'SUCCESS'
+        <if test="startDate != null and startDate != ''">
+            AND li.issue_time &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND li.issue_time &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        GROUP BY la.apply_term
+        ORDER BY la.apply_term ASC
+    </select>
+
 </mapper>

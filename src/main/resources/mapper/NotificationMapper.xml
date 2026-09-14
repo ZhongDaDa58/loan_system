@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.NotificationMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.Notification">
+        INSERT INTO notification (user_id, title, content, type, related_id, is_read, create_time)
+        VALUES (#{userId}, #{title}, #{content}, #{type}, #{relatedId}, #{isRead}, #{createTime})
+    </insert>
+
+    <insert id="insertWithBackId" useGeneratedKeys="true" keyProperty="id" parameterType="com.loan.entity.Notification">
+        INSERT INTO notification (user_id, title, content, type, related_id, is_read, create_time)
+        VALUES (#{userId}, #{title}, #{content}, #{type}, #{relatedId}, #{isRead}, #{createTime})
+    </insert>
+
+    <select id="selectByUserId" resultType="com.loan.entity.Notification">
+        SELECT id, user_id AS userId, title, content, type, related_id AS relatedId,
+               is_read AS isRead, create_time AS createTime
+        FROM notification
+        WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countByUserId" resultType="long">
+        SELECT COUNT(1) FROM notification WHERE user_id = #{userId}
+    </select>
+
+    <select id="countUnreadByUserId" resultType="long">
+        SELECT COUNT(1) FROM notification WHERE user_id = #{userId} AND (is_read IS NULL OR is_read = 0)
+    </select>
+
+    <update id="markAsRead">
+        UPDATE notification SET is_read = 1
+        WHERE id = #{id} AND user_id = #{userId} AND (is_read IS NULL OR is_read = 0)
+    </update>
+
+    <update id="markAllAsRead">
+        UPDATE notification SET is_read = 1
+        WHERE user_id = #{userId} AND (is_read IS NULL OR is_read = 0)
+    </update>
+
+    <select id="countByTypeAndRelatedId" resultType="int">
+        SELECT COUNT(1) FROM notification
+        WHERE type = #{type} AND related_id = #{relatedId}
+    </select>
+
+</mapper>

@@ -24,7 +24,8 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/v1/admin/register",
                         "/api/v1/admin/login",
                         "/api/v1/user/login",
-                        "/api/v1/products");
+                        "/api/v1/products",
+                        "/api/v1/file/**");
 
     }
     @Override

@@ -1,6 +1,7 @@
 package com.loan.controller;
 
 import com.loan.entity.dto.RepaymentSubmitDTO;
+import com.loan.entity.vo.DueItemsVO;
 import com.loan.entity.vo.RepaymentPlanListVO;
 import com.loan.entity.vo.RepaymentPlanVO;
 import com.loan.entity.vo.Result;
@@ -60,5 +61,14 @@ public class RepaymentController {
     @Operation(summary = "查询所有还款计划列表（审批员使用）", description = "返回所有用户的还款计划列表，包含用户姓名、手机号和逾期状态")
     public Result<List<RepaymentPlanListVO>> queryAllRepaymentPlans() {
         return repaymentService.queryAllRepaymentPlans();
+    }
+
+    // ========== 立即还款 ==========
+
+    @GetMapping("/due-items")
+    @Operation(summary = "查询待还款项", description = "获取当前用户所有待还款项，逾期项置顶排序")
+    public Result<DueItemsVO> queryDueItems(HttpServletRequest request) {
+        String userId = (String) request.getAttribute("userId");
+        return repaymentService.queryDueItems(userId);
     }
 }

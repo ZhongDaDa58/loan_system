@@ -1,6 +1,8 @@
 package com.loan.service.impl;
 import com.loan.entity.MonthlyRepayment;
 import com.loan.entity.UserBankCard;
+import com.loan.entity.vo.DueItemVO;
+import com.loan.entity.vo.DueItemsVO;
 import com.loan.entity.vo.RepaymentPlanListVO;
 import com.loan.entity.vo.RepaymentPlanVO;
 import com.loan.entity.dto.RepaymentSubmitDTO;
@@ -170,8 +172,38 @@ public class RepaymentServiceImpl implements RepaymentService {
             } else {
                 plan.setHasOverdue(false);
             }
+            // 避免前端拿到 null
+            if (plan.getPaidAmount() == null) plan.setPaidAmount(BigDecimal.ZERO);
+            if (plan.getUnpaidAmount() == null) plan.setUnpaidAmount(BigDecimal.ZERO);
+            if (plan.getOverdueAmount() == null) plan.setOverdueAmount(BigDecimal.ZERO);
         }
 
         return Result.success(planList);
+    }
+
+    // ========== 立即还款 ==========
+
+    @Override
+    public Result<DueItemsVO> queryDueItems(String userId) {
+        List<DueItemVO> items = monthlyRepaymentMapper.selectDueItemsByUserId(userId);
+        if (items == null || items.isEmpty()) {
+            return Result.success(new DueItemsVO(0, 0, java.util.Collections.emptyList()));
+        }
+
+        int overdueCount = (int) items.stream()
+                .filter(i -> "overdue".equals(i.getStatus()))
+                .count();
+
+        // 计算 totalDue = repaymentAmount + penalty（当前罚息为0）
+        for (DueItemVO item : items) {
+            BigDecimal penalty = BigDecimal.ZERO;
+            item.setOverduePenalty(penalty);
+            BigDecimal total = item.getRepaymentAmount() != null ? item.getRepaymentAmount() : BigDecimal.ZERO;
+            total = total.add(penalty);
+            item.setTotalDue(total);
+        }
+
+        DueItemsVO result = new DueItemsVO(items.size(), overdueCount, items);
+        return Result.success(result);
     }
 }

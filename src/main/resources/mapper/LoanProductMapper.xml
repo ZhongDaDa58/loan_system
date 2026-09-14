@@ -23,9 +23,22 @@
             max_amount,
             min_term,
             max_term
-
         FROM loan_product
         WHERE status = '1'
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="selectAll" resultType="com.loan.entity.vo.LoanProductVO">
+        SELECT
+            product_id,
+            product_name,
+            interest_rate,
+            status,
+            min_amount,
+            max_amount,
+            min_term,
+            max_term
+        FROM loan_product
         ORDER BY create_time DESC
     </select>
 

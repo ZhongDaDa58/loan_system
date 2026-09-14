@@ -79,4 +79,187 @@
         GROUP BY mr.term
         ORDER BY mr.term ASC
     </select>
+
+    <!-- ========== 逾期统计 ========== -->
+
+    <select id="selectOverdueSummary" resultType="com.loan.entity.vo.stats.OverdueSummaryVO">
+        SELECT
+            COALESCE(SUM(mr.repayment_amount), 0) AS overdueAmount,
+            COUNT(DISTINCT rp.user_id) AS overdueCustomers,
+            COALESCE(ROUND(AVG(DATEDIFF(NOW(), mr.due_date))), 0) AS avgOverdueDays
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE mr.repayment_status = 'overdue'
+        <if test="startDate != null and startDate != ''">
+            AND mr.due_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND mr.due_date &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+    </select>
+
+    <select id="selectOverdueTrend" resultType="com.loan.entity.vo.stats.OverdueTrendPointVO">
+        SELECT
+            DATE_FORMAT(mr.due_date, '%Y-%m') AS month,
+            COUNT(mr.repayment_id) AS overdueCount
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE mr.repayment_status = 'overdue'
+        <if test="startDate != null and startDate != ''">
+            AND mr.due_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND mr.due_date &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        GROUP BY DATE_FORMAT(mr.due_date, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+    <select id="countTotalDueWithinPeriod" resultType="long">
+        SELECT COUNT(1)
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE mr.repayment_status IN ('unpaid', 'overdue', 'paid')
+        <if test="startDate != null and startDate != ''">
+            AND mr.due_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND mr.due_date &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+    </select>
+
+    <select id="selectOverdueCountByMonth" resultType="com.loan.service.impl.OverdueStatsServiceImpl$OverdueTrendRaw">
+        SELECT
+            DATE_FORMAT(mr.due_date, '%Y-%m') AS month,
+            COUNT(mr.repayment_id) AS count
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE mr.repayment_status = 'overdue'
+        <if test="startDate != null and startDate != ''">
+            AND mr.due_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND mr.due_date &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        GROUP BY DATE_FORMAT(mr.due_date, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+    <select id="selectTotalDueCountByMonth" resultType="com.loan.service.impl.OverdueStatsServiceImpl$TotalDueRaw">
+        SELECT
+            DATE_FORMAT(mr.due_date, '%Y-%m') AS month,
+            COUNT(mr.repayment_id) AS count
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE mr.repayment_status IN ('unpaid', 'overdue', 'paid')
+        <if test="startDate != null and startDate != ''">
+            AND mr.due_date &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND mr.due_date &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        GROUP BY DATE_FORMAT(mr.due_date, '%Y-%m')
+        ORDER BY month ASC
+    </select>
+
+    <select id="selectOverdueAmountDistribution" resultType="com.loan.entity.vo.stats.OverdueAmountDistVO">
+        SELECT
+            CASE
+                WHEN sub.overdueAmount &lt; 10000 THEN '1万以下'
+                WHEN sub.overdueAmount &lt; 30000 THEN '1-3万'
+                WHEN sub.overdueAmount &lt; 50000 THEN '3-5万'
+                ELSE '5万以上'
+            END AS `range`,
+            SUM(sub.overdueAmount) AS amount
+        FROM (
+            SELECT
+                rp.user_id,
+                SUM(mr.repayment_amount) AS overdueAmount
+            FROM monthly_repayment mr
+            INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+            WHERE mr.repayment_status = 'overdue'
+            <if test="startDate != null and startDate != ''">
+                AND mr.due_date &gt;= #{startDate}
+            </if>
+            <if test="endDate != null and endDate != ''">
+                AND mr.due_date &lt;= CONCAT(#{endDate}, ' 23:59:59')
+            </if>
+            GROUP BY rp.user_id
+        ) sub
+        GROUP BY `range`
+        ORDER BY MIN(sub.overdueAmount) ASC
+    </select>
+
+    <!-- ========== 立即还款 ========== -->
+
+    <select id="selectDueItemsByUserId" resultType="com.loan.entity.vo.DueItemVO">
+        SELECT
+            mr.repayment_id AS repaymentId,
+            rp.application_id AS applicationId,
+            COALESCE(lp.product_name, '未知产品') AS productName,
+            mr.term,
+            DATE_FORMAT(mr.due_date, '%Y-%m-%d') AS dueDate,
+            mr.repayment_amount AS repaymentAmount,
+            mr.principal,
+            mr.interest,
+            CASE mr.repayment_status
+                WHEN 'unpaid' THEN 'pending'
+                WHEN 'overdue' THEN 'overdue'
+            END AS status,
+            CASE mr.repayment_status
+                WHEN 'unpaid' THEN '待还款'
+                WHEN 'overdue' THEN '逾期'
+            END AS statusDesc,
+            CASE mr.repayment_status
+                WHEN 'overdue' THEN DATEDIFF(NOW(), mr.due_date)
+                ELSE 0
+            END AS overdueDays,
+            0 AS overduePenalty
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        LEFT JOIN loan_application la ON rp.application_id = la.application_id
+        LEFT JOIN loan_product lp ON la.product_id = lp.product_id
+        WHERE rp.user_id = #{userId}
+          AND mr.repayment_status IN ('unpaid', 'overdue')
+          AND mr.due_date &lt;= DATE_ADD(CURDATE(), INTERVAL 1 MONTH)
+        ORDER BY
+            mr.repayment_status = 'unpaid' ASC,
+            CASE WHEN mr.repayment_status = 'overdue' THEN DATEDIFF(NOW(), mr.due_date) ELSE 0 END DESC,
+            mr.due_date ASC
+    </select>
+
+    <!-- ========== 还款提醒模块 ========== -->
+
+    <select id="selectUpcomingUnpaid" resultType="com.loan.entity.vo.UpcomingRepaymentVO">
+        SELECT
+            mr.repayment_id AS repaymentId,
+            mr.plan_id AS planId,
+            mr.term,
+            mr.repayment_amount AS repaymentAmount,
+            mr.due_date AS dueDate,
+            rp.user_id AS userId
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE mr.repayment_status = 'unpaid'
+          AND mr.due_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL #{withinDays} DAY)
+        ORDER BY mr.due_date ASC
+    </select>
+
+    <!-- ========== 用户管理模块 ========== -->
+
+    <select id="selectRepaymentRecordByUserId" resultType="com.loan.entity.vo.RepaymentRecordVO">
+        SELECT
+            mr.repayment_id AS repaymentId,
+            rp.application_id AS loanId,
+            mr.term AS period,
+            mr.repayment_amount AS amount,
+            DATE_FORMAT(mr.due_date, '%Y-%m-%d') AS dueDate,
+            DATE_FORMAT(mr.repayment_time, '%Y-%m-%d') AS repayDate,
+            mr.repayment_status AS status
+        FROM monthly_repayment mr
+        INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
+        WHERE rp.user_id = #{userId}
+        ORDER BY mr.due_date DESC
+    </select>
+
 </mapper>

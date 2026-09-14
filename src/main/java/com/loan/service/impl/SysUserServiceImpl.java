@@ -1,5 +1,6 @@
 package com.loan.service.impl;
 import com.loan.entity.SysUser;
+import com.loan.entity.dto.UserChangePasswordDTO;
 import com.loan.entity.dto.UserLoginDTO;
 import com.loan.entity.dto.UserRegisterDTO;
 import com.loan.entity.vo.Result;
@@ -144,7 +145,50 @@ public class SysUserServiceImpl implements SysUserService {
     }
 
     @Override
+    public Result<?> toggleUserStatus(String targetUserId, String operatorId) {
+        SysUser target = sysUserMapper.selectById(targetUserId);
+        if (target == null) {
+            return Result.error(404, "用户不存在");
+        }
+
+        // 不能禁用自己
+        if (targetUserId.equals(operatorId)) {
+            return Result.error(400, "不能对自己进行操作");
+        }
+
+        int newStatus = (target.getStatus() != null && target.getStatus() == 1) ? 0 : 1;
+        sysUserMapper.updateUserStatus(targetUserId, newStatus);
+
+        String msg = newStatus == 1 ? "账号已启用" : "账号已禁用";
+        return Result.success(msg);
+    }
+
+    @Override
     public SysUser getUserById(String userId) {
         return sysUserMapper.selectById(userId);
+    }
+
+    @Override
+    public Result<?> changePassword(String userId, UserChangePasswordDTO dto) {
+        SysUser user = sysUserMapper.selectById(userId);
+        if (user == null) {
+            return Result.error(400, "用户不存在");
+        }
+
+        // 校验原密码
+        if (!PasswordUtil.matches(dto.getOldPassword(), user.getPassword())) {
+            return Result.error(400, "原密码错误");
+        }
+
+        // 新密码不能与原密码相同
+        if (dto.getOldPassword().equals(dto.getNewPassword())) {
+            return Result.error(400, "新密码不能与原密码相同");
+        }
+
+        // 加密新密码并更新
+        String encodedNewPwd = PasswordUtil.encrypt(dto.getNewPassword());
+        sysUserMapper.updatePassword(userId, encodedNewPwd);
+
+        return Result.success("密码修改成功");
     }
 }
