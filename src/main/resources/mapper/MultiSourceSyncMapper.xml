@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.MultiSourceSyncMapper">
+
+    <!-- 批量：已授权某数据源的全部用户 -->
+    <select id="selectAuthorizedUsers" resultType="java.lang.String">
+        SELECT user_id
+        FROM data_source_authorization
+        WHERE source_type = #{sourceType}
+          AND auth_status = 'AUTHORIZED'
+        ORDER BY authorized_at DESC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 增量：已授权、但多源数据缺失或已过期（fetched_at 早于阈值）的用户 -->
+    <select id="selectStaleAuthorizedUsers" resultType="java.lang.String">
+        SELECT a.user_id
+        FROM data_source_authorization a
+        LEFT JOIN user_multi_source_data d
+               ON d.user_id = a.user_id
+              AND d.source_type = a.source_type
+        WHERE a.source_type = #{sourceType}
+          AND a.auth_status = 'AUTHORIZED'
+          AND (d.fetched_at IS NULL OR d.fetched_at &lt; #{threshold})
+        ORDER BY (d.fetched_at IS NOT NULL), d.fetched_at
+        LIMIT #{limit}
+    </select>
+
+</mapper>

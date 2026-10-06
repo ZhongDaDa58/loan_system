@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.ShadowScoreLogMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.ShadowScoreLog"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO shadow_score_log (
+            application_id, user_id, primary_model_key, primary_score, primary_decision,
+            features_json, shadow_status, shadow_model_key, created_at
+        ) VALUES (
+            #{applicationId}, #{userId}, #{primaryModelKey}, #{primaryScore}, #{primaryDecision},
+            #{featuresJson}, #{shadowStatus}, #{shadowModelKey}, #{createdAt}
+        )
+    </insert>
+
+    <update id="updateShadowResult" parameterType="com.loan.entity.ShadowScoreLog">
+        UPDATE shadow_score_log
+        SET shadow_status = #{shadowStatus},
+            shadow_model_key = #{shadowModelKey},
+            shadow_score = #{shadowScore},
+            shadow_decision = #{shadowDecision},
+            shadow_note = #{shadowNote},
+            scored_at = #{scoredAt}
+        WHERE id = #{id}
+    </update>
+
+    <select id="selectByStatus" resultType="com.loan.entity.ShadowScoreLog">
+        SELECT
+            id, application_id AS applicationId, user_id AS userId,
+            primary_model_key AS primaryModelKey, primary_score AS primaryScore,
+            primary_decision AS primaryDecision, features_json AS featuresJson,
+            shadow_status AS shadowStatus, shadow_model_key AS shadowModelKey,
+            shadow_score AS shadowScore, shadow_decision AS shadowDecision,
+            shadow_note AS shadowNote, created_at AS createdAt, scored_at AS scoredAt
+        FROM shadow_score_log
+        WHERE shadow_status = #{status}
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="selectRecent" resultType="com.loan.entity.ShadowScoreLog">
+        SELECT
+            id, application_id AS applicationId, user_id AS userId,
+            primary_model_key AS primaryModelKey, primary_score AS primaryScore,
+            primary_decision AS primaryDecision, features_json AS featuresJson,
+            shadow_status AS shadowStatus, shadow_model_key AS shadowModelKey,
+            shadow_score AS shadowScore, shadow_decision AS shadowDecision,
+            shadow_note AS shadowNote, created_at AS createdAt, scored_at AS scoredAt
+        FROM shadow_score_log
+        ORDER BY id DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="countByStatus" resultType="java.util.Map">
+        SELECT shadow_status AS shadowStatus, COUNT(*) AS cnt
+        FROM shadow_score_log
+        GROUP BY shadow_status
+    </select>
+
+</mapper>

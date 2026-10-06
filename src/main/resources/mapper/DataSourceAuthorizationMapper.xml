@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.DataSourceAuthorizationMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.DataSourceAuthorization">
+        INSERT INTO data_source_authorization (
+            user_id, source_type, auth_status, auth_token, scope_json,
+            authorized_at, expiry_at, create_time, update_time
+        ) VALUES (
+            #{userId}, #{sourceType}, #{authStatus}, #{authToken}, #{scopeJson},
+            #{authorizedAt}, #{expiryAt}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <update id="updateAuthStatus">
+        UPDATE data_source_authorization
+        SET auth_status = #{authStatus},
+            auth_token = #{authToken},
+            authorized_at = #{authorizedAt},
+            expiry_at = #{expiryAt},
+            update_time = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+          AND source_type = #{sourceType}
+    </update>
+
+    <select id="selectByUserIdAndSourceType" resultType="com.loan.entity.DataSourceAuthorization">
+        SELECT
+            id, user_id AS userId, source_type AS sourceType,
+            auth_status AS authStatus, auth_token AS authToken, scope_json AS scopeJson,
+            authorized_at AS authorizedAt, expiry_at AS expiryAt,
+            create_time AS createTime, update_time AS updateTime
+        FROM data_source_authorization
+        WHERE user_id = #{userId}
+          AND source_type = #{sourceType}
+        LIMIT 1
+    </select>
+
+    <select id="selectByUserId" resultType="com.loan.entity.DataSourceAuthorization">
+        SELECT
+            id, user_id AS userId, source_type AS sourceType,
+            auth_status AS authStatus, auth_token AS authToken, scope_json AS scopeJson,
+            authorized_at AS authorizedAt, expiry_at AS expiryAt,
+            create_time AS createTime, update_time AS updateTime
+        FROM data_source_authorization
+        WHERE user_id = #{userId}
+        ORDER BY source_type
+    </select>
+
+</mapper>

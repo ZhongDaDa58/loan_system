@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.UserMultiSourceDataMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.UserMultiSourceData">
+        INSERT INTO user_multi_source_data (
+            user_id, source_type, data_json, data_version, fetch_status,
+            fetched_at, create_time, update_time
+        ) VALUES (
+            #{userId}, #{sourceType}, #{dataJson}, #{dataVersion}, #{fetchStatus},
+            #{fetchedAt}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <update id="updateData" parameterType="com.loan.entity.UserMultiSourceData">
+        UPDATE user_multi_source_data
+        SET data_json = #{dataJson},
+            data_version = #{dataVersion},
+            fetch_status = #{fetchStatus},
+            fetched_at = #{fetchedAt},
+            update_time = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+          AND source_type = #{sourceType}
+    </update>
+
+    <select id="selectLatestByUserIdAndSourceType" resultType="com.loan.entity.UserMultiSourceData">
+        SELECT
+            id, user_id AS userId, source_type AS sourceType,
+            data_json AS dataJson, data_version AS dataVersion, fetch_status AS fetchStatus,
+            fetched_at AS fetchedAt, create_time AS createTime, update_time AS updateTime
+        FROM user_multi_source_data
+        WHERE user_id = #{userId}
+          AND source_type = #{sourceType}
+        ORDER BY fetched_at DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectByUserId" resultType="com.loan.entity.UserMultiSourceData">
+        SELECT
+            id, user_id AS userId, source_type AS sourceType,
+            data_json AS dataJson, data_version AS dataVersion, fetch_status AS fetchStatus,
+            fetched_at AS fetchedAt, create_time AS createTime, update_time AS updateTime
+        FROM user_multi_source_data
+        WHERE user_id = #{userId}
+        ORDER BY source_type, fetched_at DESC
+    </select>
+
+</mapper>

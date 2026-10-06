@@ -34,6 +34,7 @@ class SysUserMapperTest {
         System.out.println("Phone: " + user.getPhone());
         System.out.println("Real Name: " + user.getRealName());
 
-        assertEquals("13800138000", user.getUserId());
+        // 修正：该断言原先把"手机号"写成了 userId，正确应校验 phone 字段
+        assertEquals("13800138000", user.getPhone());
     }
 }

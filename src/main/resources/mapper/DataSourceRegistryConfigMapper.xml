@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.DataSourceRegistryConfigMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.DataSourceRegistryConfig">
+        INSERT INTO data_source_registry (
+            source_type, provider_name, enabled, priority, circuit_status,
+            config_json, last_health_at, create_time, update_time
+        ) VALUES (
+            #{sourceType}, #{providerName}, #{enabled}, #{priority}, #{circuitStatus},
+            #{configJson}, #{lastHealthAt}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <update id="updateEnabled">
+        UPDATE data_source_registry
+        SET enabled = #{enabled},
+            update_time = CURRENT_TIMESTAMP
+        WHERE source_type = #{sourceType}
+    </update>
+
+    <update id="updateCircuitStatus">
+        UPDATE data_source_registry
+        SET circuit_status = #{circuitStatus},
+            last_health_at = CURRENT_TIMESTAMP,
+            update_time = CURRENT_TIMESTAMP
+        WHERE source_type = #{sourceType}
+    </update>
+
+    <select id="selectAll" resultType="com.loan.entity.DataSourceRegistryConfig">
+        SELECT
+            id, source_type AS sourceType, provider_name AS providerName,
+            enabled, priority, circuit_status AS circuitStatus,
+            config_json AS configJson, last_health_at AS lastHealthAt,
+            create_time AS createTime, update_time AS updateTime
+        FROM data_source_registry
+        ORDER BY source_type
+    </select>
+
+    <select id="selectBySourceType" resultType="com.loan.entity.DataSourceRegistryConfig">
+        SELECT
+            id, source_type AS sourceType, provider_name AS providerName,
+            enabled, priority, circuit_status AS circuitStatus,
+            config_json AS configJson, last_health_at AS lastHealthAt,
+            create_time AS createTime, update_time AS updateTime
+        FROM data_source_registry
+        WHERE source_type = #{sourceType}
+        LIMIT 1
+    </select>
+
+</mapper>

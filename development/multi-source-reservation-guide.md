@@ -144,13 +144,16 @@ public interface DataSourceProvider {
 
 ## 7. 第 2 周执行清单（建议顺序）
 
-- [ ] ① 执行 §3 三张表 DDL（`loan_risk_control` 库）；
-- [ ] ② 新增三个 entity + 三个 Mapper XML（最小读写方法）；
-- [ ] ③ 建 `com.loan.spi` 包：`DataSourceProvider` + `MultiSourceData` + `DataSourceRegistry` 空壳；
-- [ ] ④ 建四个 Mock Provider 空实现并注册；
-- [ ] ⑤ 实现两个新 Controller 的 6 个预留端点骨架；
-- [ ] ⑥ 更新 `development/` 下契约文档（本指南转为正式 API 文档）；
-- [ ] ⑦ 回归验证（见 §8）。
+- [x] ① 执行 §3 三张表 DDL（`loan_risk_control` 库）—— 已在库中建成；
+- [x] ② 新增三个 entity + 三个 Mapper XML（最小读写方法）；
+- [x] ③ 建 `com.loan.spi` 包：`DataSourceProvider` + `MultiSourceData` + `DataSourceRegistry` 空壳；
+- [x] ④ 建四个 Mock Provider 空实现并注册（启动日志确认注册 4 个：credit/device/operator/social）；
+- [x] ⑤ 实现两个新 Controller 的 **5 个**预留端点骨架（authorize / authorizations / revoke / profile / event）；
+- [x] ⑥ 更新 `development/` 下契约文档 —— 正式 API 文档见 `multi-source-api.md`；
+- [x] ⑦ 回归验证（见 §8）。
+
+> **W2 完成记录**：`./mvnw test` → Tests run: 9, Failures: 0, Errors: 0（BUILD SUCCESS）；新端点冒烟（授权 / 状态 / 摘要 / 事件上报 / 撤销）与旧接口回归（信用分、评分卡 v3 计算、产品列表）全部通过；撤销后授权留痕保留（时间与凭证不丢）已实测确认。
+> 注：§5 的接口表实际为 5 个端点（本文档初稿在 §7 误记为“6 个”，此处已修正）。
 
 ## 8. 回归验证（防止影响现有功能）
 

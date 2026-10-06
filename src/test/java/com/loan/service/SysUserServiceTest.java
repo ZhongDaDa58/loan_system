@@ -6,6 +6,11 @@ import com.loan.entity.vo.Result;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.concurrent.ThreadLocalRandom;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @SpringBootTest
 public class SysUserServiceTest {
@@ -14,14 +19,19 @@ public class SysUserServiceTest {
     private SysUserService sysUserService;
 
     @Test
+    @Transactional  // 测试后回滚，避免往测试库遗留脏数据
     public void testRegister() {
+        // 修正：改用随机手机号，保证测试可重复执行（原先写死号码，第二次运行必然"手机号已注册"）
+        String phone = "139" + String.format("%08d", ThreadLocalRandom.current().nextInt(100000000));
         UserRegisterDTO dto = new UserRegisterDTO();
-        dto.setPhone("13911110000");
+        dto.setPhone(phone);
         dto.setPassword("Aa123456");
         dto.setRealName("测试人");
 
         Result<?> result = sysUserService.register(dto);
         System.out.println("注册结果：" + result);
+
+        assertEquals(200, result.getCode());
     }
 
     @Test
