@@ -33,3 +33,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### 运行时产物（测试/演示生成，不入库）###
+contracts/
+uploads/
