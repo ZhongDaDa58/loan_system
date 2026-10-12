@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.MockFinancialProfileMapper">
+
+    <sql id="columns">
+        id, match_key AS matchKey, real_name AS realName, phone,
+        monthly_income AS monthlyIncome, income_source AS incomeSource, bank_flow_months AS bankFlowMonths,
+        credit_card_limit AS creditCardLimit, credit_card_used AS creditCardUsed,
+        existing_loan_count AS existingLoanCount, monthly_debt_payment AS monthlyDebtPayment,
+        overdue_count_2y AS overdueCount2y, query_count_3m AS queryCount3m,
+        has_house AS hasHouse, has_car AS hasCar, deposit_balance AS depositBalance,
+        social_contrib_months AS socialContribMonths, social_base AS socialBase,
+        operator_months AS operatorMonths,
+        company_name AS companyName, position, industry_type AS industryType,
+        work_years AS workYears, employment_type AS employmentType,
+        data_source AS dataSource, create_time AS createTime, update_time AS updateTime
+    </sql>
+
+    <select id="selectByMatchKey" resultType="com.loan.entity.MockFinancialProfile">
+        SELECT <include refid="columns"/>
+        FROM mock_financial_profile
+        WHERE match_key = #{matchKey}
+        LIMIT 1
+    </select>
+
+    <select id="selectAll" resultType="com.loan.entity.MockFinancialProfile">
+        SELECT <include refid="columns"/>
+        FROM mock_financial_profile
+        ORDER BY id DESC
+        LIMIT 200
+    </select>
+
+    <select id="countAll" resultType="int">
+        SELECT COUNT(*) FROM mock_financial_profile
+    </select>
+
+    <insert id="insert" parameterType="com.loan.entity.MockFinancialProfile" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO mock_financial_profile (
+            match_key, real_name, phone,
+            monthly_income, income_source, bank_flow_months,
+            credit_card_limit, credit_card_used, existing_loan_count, monthly_debt_payment,
+            overdue_count_2y, query_count_3m,
+            has_house, has_car, deposit_balance,
+            social_contrib_months, social_base, operator_months,
+            company_name, position, industry_type, work_years, employment_type,
+            data_source, create_time, update_time
+        ) VALUES (
+            #{matchKey}, #{realName}, #{phone},
+            #{monthlyIncome}, #{incomeSource}, #{bankFlowMonths},
+            #{creditCardLimit}, #{creditCardUsed}, #{existingLoanCount}, #{monthlyDebtPayment},
+            #{overdueCount2y}, #{queryCount3m},
+            #{hasHouse}, #{hasCar}, #{depositBalance},
+            #{socialContribMonths}, #{socialBase}, #{operatorMonths},
+            #{companyName}, #{position}, #{industryType}, #{workYears}, #{employmentType},
+            #{dataSource}, NOW(), NOW()
+        )
+    </insert>
+
+    <update id="updateByMatchKey" parameterType="com.loan.entity.MockFinancialProfile">
+        UPDATE mock_financial_profile
+        SET real_name = #{realName}, phone = #{phone},
+            monthly_income = #{monthlyIncome}, income_source = #{incomeSource},
+            bank_flow_months = #{bankFlowMonths},
+            credit_card_limit = #{creditCardLimit}, credit_card_used = #{creditCardUsed},
+            existing_loan_count = #{existingLoanCount}, monthly_debt_payment = #{monthlyDebtPayment},
+            overdue_count_2y = #{overdueCount2y}, query_count_3m = #{queryCount3m},
+            has_house = #{hasHouse}, has_car = #{hasCar}, deposit_balance = #{depositBalance},
+            social_contrib_months = #{socialContribMonths}, social_base = #{socialBase},
+            operator_months = #{operatorMonths},
+            company_name = #{companyName}, position = #{position}, industry_type = #{industryType},
+            work_years = #{workYears}, employment_type = #{employmentType},
+            data_source = #{dataSource}, update_time = NOW()
+        WHERE match_key = #{matchKey}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM mock_financial_profile WHERE id = #{id}
+    </delete>
+
+</mapper>
