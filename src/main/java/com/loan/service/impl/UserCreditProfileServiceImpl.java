@@ -14,6 +14,8 @@ import com.loan.service.FeatureTransformationService;
 import com.loan.service.ScorecardService;
 import com.loan.service.UserCreditProfileService;
 import jakarta.annotation.Resource;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +25,8 @@ import java.util.Date;
 
 @Service
 public class UserCreditProfileServiceImpl implements UserCreditProfileService {
+
+    private static final Logger log = LoggerFactory.getLogger(UserCreditProfileServiceImpl.class);
 
     private static final ObjectMapper objectMapper = new ObjectMapper()
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
@@ -36,6 +40,10 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
 
     @Resource
     private ScorecardService scorecardService;
+
+    /** 统一评分路由：优先「多源特征 + 多模型 v4」，覆盖不足回落单模型 v3（与申请链路口径一致） */
+    @Resource
+    private com.loan.service.ScorecardRoutingService scorecardRoutingService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -54,7 +62,7 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         computeFeatures(profile, dto);
 
         profileMapper.insert(profile);
-        return Result.success("信用档案创建成功，信用分：" + profile.getCreditScore());
+        return Result.success(buildSaveMessage("信用档案创建成功", profile.getCreditScore()));
     }
 
     @Override
@@ -71,7 +79,7 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         computeFeatures(existing, dto);
 
         profileMapper.update(existing);
-        return Result.success("信用档案更新成功，信用分：" + existing.getCreditScore());
+        return Result.success(buildSaveMessage("信用档案更新成功", existing.getCreditScore()));
     }
 
     @Override
@@ -106,10 +114,14 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         userProfile.setDependents(profile.getDependents());
         userProfile.setRevolvingUtil(profile.getRevolvingUtil());
 
-        Integer score = scorecardService.calculateScoreOnly(userProfile);
-        profileMapper.updateScore(userId, score);
-
-        return Result.success("重新评分完成，当前信用分：" + score);
+        try {
+            Integer score = scorecardService.calculateScoreOnly(userProfile);
+            profileMapper.updateScore(userId, score);
+            return Result.success("重新评分完成，当前信用分：" + score);
+        } catch (Exception e) {
+            log.warn("⚠️ 重新评分失败: userId={}, 原因={}", userId, e.getMessage());
+            return Result.error(400, "重新评分失败：" + e.getMessage());
+        }
     }
 
     // ========== 私有方法 ==========
@@ -134,24 +146,52 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         }
     }
 
+    /**
+     * 计算画像特征并评分
+     *
+     * 注意：评分失败不再静默——会记录告警，并在保存结果提示中告知用户（避免"保存成功但无法申请"）。
+     */
     private void computeFeatures(UserCreditProfile entity, CreditProfileDTO dto) {
         UserBasicInfoDTO basicInfo = buildBasicInfo(dto);
 
         FeatureTransformationResultDTO result =
                 featureTransformationService.transformToUserProfile(basicInfo);
 
-        if (result.getIsValid() != null && result.getIsValid()) {
-            UserProfileDTO profile = result.getUserProfile();
-            entity.setAge(profile.getAge());
-            entity.setDebtRatio(profile.getDebtRatio());
-            entity.setMonthlyIncome(profile.getMonthlyIncome());
-            entity.setCreditLines(profile.getCreditLines());
-            entity.setDependents(profile.getDependents());
-            entity.setRevolvingUtil(profile.getRevolvingUtil());
-
-            Integer score = scorecardService.calculateScoreOnly(profile);
-            entity.setCreditScore(score);
+        if (result.getIsValid() == null || !result.getIsValid()) {
+            log.warn("⚠️ 特征转换未通过，未生成评分: userId={}", entity.getUserId());
+            return;
         }
+
+        UserProfileDTO profile = result.getUserProfile();
+        entity.setAge(profile.getAge());
+        entity.setDebtRatio(profile.getDebtRatio());
+        entity.setMonthlyIncome(profile.getMonthlyIncome());
+        entity.setCreditLines(profile.getCreditLines());
+        entity.setDependents(profile.getDependents());
+        entity.setRevolvingUtil(profile.getRevolvingUtil());
+
+        try {
+            // 统一评分口径：优先「多源特征 + 多模型 v4」，覆盖不足时回落单模型 v3 —— 保证档案分与申请分一致
+            com.loan.service.ScorecardRoutingService.ScoreOutcome outcome =
+                    scorecardRoutingService.score(entity.getUserId(), profile);
+            entity.setCreditScore(outcome.score());
+            log.info("✅ 档案评分: userId={} score={} model={} source={} 缺失特征={}/{}",
+                    entity.getUserId(), outcome.score(), outcome.modelKey(), outcome.source(),
+                    outcome.missingFeatures(), outcome.requiredFeatures());
+        } catch (Exception e) {
+            log.warn("⚠️ 评分失败（档案已保存，信用分为空）: userId={}, 原因={}",
+                    entity.getUserId(), e.getMessage());
+        }
+    }
+
+    /**
+     * 保存结果提示：分数为空时给出明确原因
+     */
+    private String buildSaveMessage(String prefix, Integer creditScore) {
+        if (creditScore == null) {
+            return prefix + "，但评分未生成：请检查财务信息（收入来源、负债信息）与职业信息是否填写完整，完善后重新保存";
+        }
+        return prefix + "，信用分：" + creditScore;
     }
 
     /**

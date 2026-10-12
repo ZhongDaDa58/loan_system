@@ -82,8 +82,17 @@ public class ContractServiceImpl implements ContractService {
     @Override
     public Result<String> signByUser(String applicationId) {
         LoanApplication application = loanApplicationMapper.selectByApplicationId(applicationId);
-        if (application == null || application.getContractPath() == null) {
-            return Result.error(400, "合同尚未生成，请稍后重试");
+        if (application == null) {
+            return Result.error(400, "贷款申请不存在");
+        }
+
+        // 兜底：自动通过路径或历史数据可能未生成合同草稿，此处补生成（避免签约被卡住）
+        if (application.getContractPath() == null) {
+            Result<String> draftResult = generateDraftContract(applicationId);
+            if (draftResult == null || !Integer.valueOf(200).equals(draftResult.getCode())) {
+                return Result.error(400, "合同尚未生成，请稍后重试");
+            }
+            application = loanApplicationMapper.selectByApplicationId(applicationId);
         }
 
         try {

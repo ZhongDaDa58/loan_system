@@ -12,7 +12,9 @@ public enum SourceTypeEnum {
     CREDIT("credit", "央行征信"),
     OPERATOR("operator", "运营商数据"),
     SOCIAL("social", "社保/公积金"),
-    DEVICE("device", "设备指纹");
+    DEVICE("device", "设备指纹"),
+    /** App 端行为埋点（由客户端直接上报，无对应授权/同步流程） */
+    BEHAVIOR("behavior", "行为埋点");
 
     private final String code;
     private final String desc;

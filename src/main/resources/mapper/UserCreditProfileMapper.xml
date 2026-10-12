@@ -23,6 +23,7 @@
             family_info = #{familyInfo}, financial_info = #{financialInfo}, employment_info = #{employmentInfo},
             age = #{age}, debt_ratio = #{debtRatio}, monthly_income = #{monthlyIncome},
             credit_lines = #{creditLines}, dependents = #{dependents}, revolving_util = #{revolvingUtil},
+            credit_score = #{creditScore},
             update_time = #{updateTime}
         WHERE user_id = #{userId}
     </update>
