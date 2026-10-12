@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.RiskRuleHitLogMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.RiskRuleHitLog" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO risk_rule_hit_log (
+            application_id, user_id, rule_id, rule_code, rule_name, layer, action, shadow, hit_time
+        ) VALUES (
+            #{applicationId}, #{userId}, #{ruleId}, #{ruleCode}, #{ruleName}, #{layer}, #{action},
+            #{shadow}, NOW()
+        )
+    </insert>
+
+    <select id="selectOverview" resultType="java.util.Map">
+        SELECT
+            COUNT(*)                                  AS totalHits,
+            COALESCE(SUM(shadow), 0)                  AS shadowHits,
+            COUNT(DISTINCT application_id)            AS involvedApplications,
+            COUNT(DISTINCT rule_code)                 AS distinctRules
+        FROM risk_rule_hit_log
+    </select>
+
+    <select id="countByRule" resultType="java.util.Map">
+        SELECT
+            rule_code   AS ruleCode,
+            rule_name   AS ruleName,
+            layer       AS layer,
+            action      AS action,
+            COUNT(*)    AS hitCount,
+            COALESCE(SUM(shadow), 0) AS shadowHits,
+            COUNT(DISTINCT application_id) AS applicationCount
+        FROM risk_rule_hit_log
+        GROUP BY rule_code, rule_name, layer, action
+        ORDER BY hitCount DESC
+    </select>
+
+    <select id="countByLayerAction" resultType="java.util.Map">
+        SELECT
+            layer   AS layer,
+            action  AS action,
+            COUNT(*) AS hitCount
+        FROM risk_rule_hit_log
+        GROUP BY layer, action
+        ORDER BY layer, action
+    </select>
+
+    <!-- 近似误杀率：命中该规则的申请中，最终状态为 approved 的比例（需外部申请单关联） -->
+    <select id="countByRuleWithOutcome" resultType="java.util.Map">
+        SELECT
+            h.rule_code AS ruleCode,
+            h.rule_name AS ruleName,
+            COUNT(DISTINCT h.application_id) AS applicationCount,
+            COALESCE(SUM(CASE WHEN a.application_status = 'approved' THEN 1 ELSE 0 END), 0) AS approvedCount,
+            COALESCE(SUM(CASE WHEN a.application_status = 'rejected' THEN 1 ELSE 0 END), 0) AS rejectedCount
+        FROM risk_rule_hit_log h
+        LEFT JOIN loan_application a ON a.application_id = h.application_id
+        WHERE h.shadow = 0
+        GROUP BY h.rule_code, h.rule_name
+        ORDER BY applicationCount DESC
+    </select>
+
+    <select id="selectRecent" resultType="com.loan.entity.RiskRuleHitLog">
+        SELECT
+            id,
+            application_id AS applicationId,
+            user_id        AS userId,
+            rule_id        AS ruleId,
+            rule_code      AS ruleCode,
+            rule_name      AS ruleName,
+            layer,
+            action,
+            shadow,
+            hit_time       AS hitTime
+        FROM risk_rule_hit_log
+        ORDER BY hit_time DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

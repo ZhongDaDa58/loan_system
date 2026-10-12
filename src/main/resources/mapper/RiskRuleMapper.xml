@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.RiskRuleMapper">
+
+    <sql id="columns">
+        id,
+        rule_code      AS ruleCode,
+        name,
+        category,
+        layer,
+        condition_text AS `condition`,
+        action,
+        action_param   AS actionParam,
+        priority,
+        enabled,
+        shadow_mode    AS shadowMode,
+        remark,
+        create_time    AS createTime,
+        update_time    AS updateTime
+    </sql>
+
+    <select id="selectAll" resultType="com.loan.entity.RiskRule">
+        SELECT <include refid="columns"/>
+        FROM risk_rule
+        <where>
+            <if test="category != null and category != ''">
+                category = #{category}
+            </if>
+        </where>
+        ORDER BY priority ASC, id ASC
+    </select>
+
+    <select id="selectById" resultType="com.loan.entity.RiskRule">
+        SELECT <include refid="columns"/>
+        FROM risk_rule
+        WHERE id = #{id}
+    </select>
+
+    <select id="selectEnabledByLayer" resultType="com.loan.entity.RiskRule">
+        SELECT <include refid="columns"/>
+        FROM risk_rule
+        WHERE layer = #{layer} AND enabled = 1
+        ORDER BY priority ASC, id ASC
+    </select>
+
+    <insert id="insert" parameterType="com.loan.entity.RiskRule" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO risk_rule (
+            rule_code, name, category, layer, condition_text, action, action_param,
+            priority, enabled, shadow_mode, remark, create_time, update_time
+        ) VALUES (
+            #{ruleCode}, #{name}, #{category}, #{layer}, #{condition}, #{action}, #{actionParam},
+            #{priority}, #{enabled}, #{shadowMode}, #{remark}, NOW(), NOW()
+        )
+    </insert>
+
+    <update id="update" parameterType="com.loan.entity.RiskRule">
+        UPDATE risk_rule
+        <set>
+            <if test="ruleCode != null">rule_code = #{ruleCode},</if>
+            <if test="name != null">name = #{name},</if>
+            <if test="category != null">category = #{category},</if>
+            <if test="layer != null">layer = #{layer},</if>
+            <if test="condition != null">condition_text = #{condition},</if>
+            <if test="action != null">action = #{action},</if>
+            <if test="actionParam != null">action_param = #{actionParam},</if>
+            <if test="priority != null">priority = #{priority},</if>
+            <if test="enabled != null">enabled = #{enabled},</if>
+            <if test="shadowMode != null">shadow_mode = #{shadowMode},</if>
+            <if test="remark != null">remark = #{remark},</if>
+            update_time = NOW()
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM risk_rule WHERE id = #{id}
+    </delete>
+
+    <update id="updateEnabled">
+        UPDATE risk_rule SET enabled = #{enabled}, update_time = NOW() WHERE id = #{id}
+    </update>
+
+</mapper>
