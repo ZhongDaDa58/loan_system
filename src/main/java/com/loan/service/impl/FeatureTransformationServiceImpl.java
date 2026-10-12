@@ -1,8 +1,12 @@
 package com.loan.service.impl;
 
+import com.loan.entity.UserCreditProfile;
 import com.loan.entity.dto.*;
 import com.loan.exception.BusinessException;
+import com.loan.mapper.UserCreditProfileMapper;
 import com.loan.service.FeatureTransformationService;
+import com.loan.service.MultiSourceIngestService;
+import jakarta.annotation.Resource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -180,6 +184,67 @@ public class FeatureTransformationServiceImpl implements FeatureTransformationSe
 
         log.debug("💳 循环信贷使用率计算结果: {}", utilization);
         return utilization;
+    }
+
+    // ==================== W5-A1：多源特征装配（新增，不影响上述 6 特征方法） ====================
+
+    @Resource
+    private UserCreditProfileMapper userCreditProfileMapper;
+
+    @Resource
+    private MultiSourceIngestService multiSourceIngestService;
+
+    /** XGB 多源提纯推理器（为融合模型 v5-fusion 提供 xgb_multi_score 特征） */
+    @Resource
+    private com.loan.scorecard.XgbTreeScorer xgbTreeScorer;
+
+    /**
+     * 组装"基础 6 特征 + 多源特征"的评分入参（供 /api/v1/scorecard/v2/calculate 使用）。
+     * 读不到的部分不放入 Map，由模型侧按 missingFeatures 标注缺失，不影响评分可用性。
+     */
+    @Override
+    public Map<String, Object> buildMultiSourceFeatures(String userId) {
+        Map<String, Object> features = new LinkedHashMap<>();
+        try {
+            // 1) 基础 6 特征（信用档案口径，与 v3 模型一致）
+            UserCreditProfile profile = userCreditProfileMapper.selectByUserId(userId);
+            if (profile != null) {
+                putIfNotNull(features, "revolving_util", profile.getRevolvingUtil());
+                putIfNotNull(features, "age", profile.getAge());
+                putIfNotNull(features, "debt_ratio", profile.getDebtRatio());
+                putIfNotNull(features, "monthly_income", profile.getMonthlyIncome());
+                putIfNotNull(features, "credit_lines", profile.getCreditLines());
+                putIfNotNull(features, "dependents", profile.getDependents());
+            }
+            // 2) 多源特征（特征宽表快照：征信/运营商/设备等）
+            Map<String, Object> snapshot = multiSourceIngestService.featureSnapshot(userId);
+            Object multi = snapshot == null ? null : snapshot.get("features");
+            if (multi instanceof Map<?, ?> multiMap) {
+                for (Map.Entry<?, ?> entry : multiMap.entrySet()) {
+                    if (entry.getKey() != null && entry.getValue() != null) {
+                        features.put(String.valueOf(entry.getKey()), entry.getValue());
+                    }
+                }
+            }
+            // 3) XGB 多源提纯分（v4-fusion / v5-fusion 使用；v3 / v4 会忽略该特征）
+            if (xgbTreeScorer.isReady()) {
+                Double xgbScore = xgbTreeScorer.predictMultiScore(features);
+                if (xgbScore != null) {
+                    features.put("xgb_multi_score", xgbScore);
+                    log.info("🧠 XGB 多源提纯分：{} -> xgb_multi_score={}", userId, String.format("%.6f", xgbScore));
+                }
+            }
+            log.info("🧩 多源特征装配完成（含 XGB 提纯分）：用户 {}，特征数 {}", userId, features.size());
+        } catch (Exception e) {
+            log.warn("⚠️ 多源特征装配失败（返回已装配部分）: {}", e.getMessage());
+        }
+        return features;
+    }
+
+    private void putIfNotNull(Map<String, Object> target, String key, Object value) {
+        if (value != null) {
+            target.put(key, value);
+        }
     }
 
     @Override

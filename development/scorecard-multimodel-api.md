@@ -206,4 +206,43 @@ GET /api/v1/scorecard/v2/shadow?limit=20
 
 ---
 
+## 8. 模型口径与本期边界（W5-A0 收口）
+
+### 8.1 模型口径统一（以此为准）
+
+| 注册键 | 特征数 | 离线指标 | 定位 | 线上参与决策 |
+|---|---|---|---|---|
+| `v3` | 6 | AUC 0.7630 / KS 0.4124 | 历史基线、降级兜底 | 否（可显式请求） |
+| **`v4`** | **21** | **AUC 0.8556 / KS 0.5578** | **线上默认主模型** | **是** |
+| `v4-fusion` | 22 | AUC 0.8639 / KS 0.5742 | 影子对照（需 `xgb_multi_score` 特征） | 否 |
+
+> **更正说明**：W4 计划文档曾将 `model_config_v4.json` 标注为 fusion / AUC 0.8639；
+> 实际 `model_config_v4.json` 为 **21 特征 multi 版（0.8556）**，fusion 对应 `model_config_v4_fusion.json`。
+> 两者均满足 M1 的 AUC ≥ 0.80 要求，口径以本表为准。
+
+### 8.2 本期边界：`social`（社保/公积金）源不接入
+
+- `MockSocialProvider` 保持占位（返回空），`/multi-source/sync` 对 `social` 源结果为 `users=0`；
+- 因此 v4 评分的 `missingFeatures` 通常包含 `social_contrib_months` / `social_base` / `social_employer_cnt`；
+- **缺失处理**：按既有策略计入 0 分并在 `missingFeatures` 中标注，不影响评分可用性与决策链路；
+- 后续如需接入：仅需实现 `MockSocialProvider.fetch`（字段口径见《多源数据.md》），其余链路无需改动（SPI 设计保证）。
+
+### 8.3 影子采样（W5-A5）
+
+| 配置 | 说明 |
+|---|---|
+| `shadow.rate` | 影子采样比例：`0` = 关闭（默认）；`1` = 全量；`(0,1)` = 按比例随机采样 |
+
+> 放量演练：以 `--shadow.rate=1` 启动（或修改 `application.properties` 后重启）即可临时全量采样。
+
+### 8.4 多源特征装配与校验（W5-A1 / A2）
+
+| 能力 | 位置 | 说明 |
+|---|---|---|
+| 多源特征装配 | `FeatureTransformationService.buildMultiSourceFeatures(userId)` | 基础 6 特征（信用档案）+ 多源特征（宽表快照）合并为评分入参；**现有 6 特征方法未改动** |
+| 多源特征校验 | `DataValidationService.validateMultiSourceFeatures(features)` | 三层：类型 / 区间（字段级上下限）/ 业务规则（在网 ≤ 实名、缴存基数与收入匹配等）；**现有三层校验未改动** |
+| 用例 | `MultiSourceValidationTest`（5 例） | 合法通过 / 类型错误 / 区间越界 / 业务规则冲突 / 空特征不报错 |
+
+---
+
 **文档结束**

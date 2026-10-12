@@ -22,4 +22,12 @@ public interface MultiModelScorecardService {
 
     /** 单个模型详情（不存在返回 null） */
     Map<String, Object> getModel(String modelKey);
+
+    /**
+     * W5-B2：审批详情聚合（决策留痕 + 特征贡献 + 多源脱敏摘要），供 Web 审批详情页使用。
+     *
+     * @param applicationId 申请 ID
+     * @return 聚合结果（含 found 标记；未找到留痕时 found=false 并附说明）
+     */
+    Map<String, Object> approvalSummary(String applicationId);
 }

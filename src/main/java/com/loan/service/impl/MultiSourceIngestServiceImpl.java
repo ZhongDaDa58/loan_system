@@ -74,6 +74,11 @@ public class MultiSourceIngestServiceImpl implements MultiSourceIngestService {
         RANGE_RULES.put("device_multi_account_now", new double[]{0, 1});
         RANGE_RULES.put("ip_proxy_risk", new double[]{0, 1});
         RANGE_RULES.put("ip_geo_mismatch", new double[]{0, 1});
+
+        // App 端行为埋点（客户端直接上报）：白名单里只放"派生后的特征名"
+        ALLOWED_FIELDS.put(SourceTypeEnum.BEHAVIOR.getCode(), List.of(
+                "behavior_anomaly_score"));
+        RANGE_RULES.put("behavior_anomaly_score", new double[]{0, 1});
     }
 
     @Resource
@@ -176,6 +181,141 @@ public class MultiSourceIngestServiceImpl implements MultiSourceIngestService {
     /**
      * 标准化清洗：白名单过滤 + 数值区间截断 + 丢弃空值
      */
+    /**
+     * 按数据源直接写入特征字段（清洗 → upsert）
+     * 用途：模拟金融信息等"非 SPI"来源写入多源特征（credit/operator/social）
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> ingestFields(String userId, String sourceType, Map<String, Object> fields) {
+        Map<String, Object> cleaned = clean(sourceType, fields == null ? new LinkedHashMap<>() : fields);
+        upsert(userId, sourceType, cleaned);
+        cleaned.remove("data_version");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("sourceType", sourceType);
+        result.put("fieldCount", cleaned.size());
+        result.put("fields", cleaned);
+        log.info("📥 [多源特征写入] 用户: {}, 源: {}, 字段: {}", userId, sourceType, cleaned);
+        return result;
+    }
+
+    /**
+     * App 端事件上报落库（多源"入口"打通）
+     *
+     * 处理规则：
+     *  - eventType = device   → source_type=device，保留白名单字段并派生 device_first_seen_months；
+     *  - eventType = behavior → source_type=behavior，派生 behavior_anomaly_score；
+     *  - 其他（如 location）  → 暂不作为特征，计入 skipped（位置类特征待后续扩展）。
+     * 落库前统一走 {@link #clean} 白名单过滤与区间截断，避免原始字段污染特征空间。
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Map<String, Object> ingestEvents(String userId, java.util.List<com.loan.entity.dto.MultiSourceEventDTO> events) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> bySource = new LinkedHashMap<>();
+        int skipped = 0;
+
+        if (events != null) {
+            for (com.loan.entity.dto.MultiSourceEventDTO event : events) {
+                try {
+                    String type = event.getEventType() == null ? "" : event.getEventType().trim().toLowerCase();
+                    Map<String, Object> data = event.getEventData() == null
+                            ? new LinkedHashMap<>() : event.getEventData();
+
+                    if ("device".equals(type)) {
+                        Map<String, Object> raw = bySource.computeIfAbsent(
+                                SourceTypeEnum.DEVICE.getCode(), k -> new LinkedHashMap<>());
+                        raw.putAll(data);
+                        raw.put("device_first_seen_months", monthsSince(data.get("first_seen_at")));
+                    } else if ("behavior".equals(type)) {
+                        Map<String, Object> raw = bySource.computeIfAbsent(
+                                SourceTypeEnum.BEHAVIOR.getCode(), k -> new LinkedHashMap<>());
+                        raw.putAll(data);
+                        raw.put("behavior_anomaly_score", behaviorAnomalyScore(data));
+                    } else {
+                        skipped++;
+                    }
+                } catch (Exception e) {
+                    skipped++;
+                    log.warn("⚠️ 事件处理失败（已跳过）: {}", e.getMessage());
+                }
+            }
+        }
+
+        Map<String, Object> saved = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Object>> entry : bySource.entrySet()) {
+            Map<String, Object> cleaned = clean(entry.getKey(), entry.getValue());
+            upsert(userId, entry.getKey(), cleaned);
+            cleaned.remove("data_version");
+            saved.put(entry.getKey(), cleaned);
+        }
+
+        result.put("accepted", events == null ? 0 : events.size());
+        result.put("skipped", skipped);
+        result.put("saved", saved);
+        log.info("📥 [多源事件落库] 用户: {}, 接收: {}, 落库源: {}, 跳过: {}, 特征: {}",
+                userId, events == null ? 0 : events.size(), saved.keySet(), skipped, saved);
+        return result;
+    }
+
+    /** 首次出现时间（时间戳/纯数字字符串）→ 距今月数（保留 2 位） */
+    private double monthsSince(Object firstSeenAt) {
+        try {
+            long ts;
+            if (firstSeenAt instanceof Number n) {
+                ts = n.longValue();
+            } else if (firstSeenAt != null) {
+                String s = String.valueOf(firstSeenAt).trim();
+                if (!s.matches("\\d+")) {
+                    return 0;
+                }
+                ts = Long.parseLong(s);
+            } else {
+                return 0;
+            }
+            long diffMs = System.currentTimeMillis() - ts;
+            if (diffMs <= 0) {
+                return 0;
+            }
+            return Math.round(diffMs / (30.0 * 24 * 3600 * 1000) * 100.0) / 100.0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
+     * 行为异常分（0~1，规则化计算）
+     * 依据客户端埋点：字段顺序异常、填表过快、字段数缺失、填写耗时过长
+     */
+    private double behaviorAnomalyScore(Map<String, Object> data) {
+        double score = 0.0;
+        double orderAnomaly = toDouble(data.get("field_order_anomaly"), 0);
+        double formFillMs = toDouble(data.get("form_fill_ms"), -1);
+        double fieldCount = toDouble(data.get("field_count"), -1);
+        double durationMs = toDouble(data.get("duration_ms"), -1);
+
+        if (orderAnomaly > 0) score += 0.4;                       // 字段顺序被改动，疑似脚本填充
+        if (formFillMs >= 0 && formFillMs < 2000) score += 0.3;   // 填表过快
+        if (fieldCount == 0) score += 0.2;                        // 字段数异常（埋点缺失）
+        if (durationMs > 600000) score += 0.1;                    // 停留过久
+
+        return Math.min(1.0, Math.round(score * 100.0) / 100.0);
+    }
+
+    private double toDouble(Object v, double defaultValue) {
+        if (v instanceof Number n) {
+            return n.doubleValue();
+        }
+        if (v != null) {
+            try {
+                return Double.parseDouble(String.valueOf(v));
+            } catch (Exception ignored) {
+                // 非数值按默认值处理
+            }
+        }
+        return defaultValue;
+    }
+
     private Map<String, Object> clean(String sourceType, Map<String, Object> raw) {
         Map<String, Object> cleaned = new LinkedHashMap<>();
         List<String> allowed = ALLOWED_FIELDS.getOrDefault(sourceType, List.of());
