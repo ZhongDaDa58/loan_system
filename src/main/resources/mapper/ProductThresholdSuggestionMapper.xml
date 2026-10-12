@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.ProductThresholdSuggestionMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.ProductThresholdSuggestion"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO product_threshold_suggestion (
+            product_id, suggested_auto_pass, suggested_manual_review, target_bad_rate,
+            expected_bad_rate, expected_pass_rate, sample_size, calibrated_at, note,
+            adopted, adopted_at, create_time
+        ) VALUES (
+            #{productId}, #{suggestedAutoPass}, #{suggestedManualReview}, #{targetBadRate},
+            #{expectedBadRate}, #{expectedPassRate}, #{sampleSize}, #{calibratedAt}, #{note},
+            #{adopted}, #{adoptedAt}, #{createTime}
+        )
+    </insert>
+
+    <select id="selectLatestByProductId" resultType="com.loan.entity.ProductThresholdSuggestion">
+        SELECT
+            id,
+            product_id              AS productId,
+            suggested_auto_pass     AS suggestedAutoPass,
+            suggested_manual_review AS suggestedManualReview,
+            target_bad_rate         AS targetBadRate,
+            expected_bad_rate       AS expectedBadRate,
+            expected_pass_rate      AS expectedPassRate,
+            sample_size             AS sampleSize,
+            calibrated_at           AS calibratedAt,
+            note,
+            adopted,
+            adopted_at              AS adoptedAt,
+            create_time             AS createTime
+        FROM product_threshold_suggestion
+        WHERE product_id = #{productId}
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectByProductId" resultType="com.loan.entity.ProductThresholdSuggestion">
+        SELECT
+            id,
+            product_id              AS productId,
+            suggested_auto_pass     AS suggestedAutoPass,
+            suggested_manual_review AS suggestedManualReview,
+            target_bad_rate         AS targetBadRate,
+            expected_bad_rate       AS expectedBadRate,
+            expected_pass_rate      AS expectedPassRate,
+            sample_size             AS sampleSize,
+            calibrated_at           AS calibratedAt,
+            note,
+            adopted,
+            adopted_at              AS adoptedAt,
+            create_time             AS createTime
+        FROM product_threshold_suggestion
+        WHERE product_id = #{productId}
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+    <update id="markAdopted">
+        UPDATE product_threshold_suggestion
+        SET adopted = 1, adopted_at = NOW()
+        WHERE id = #{id}
+    </update>
+
+</mapper>

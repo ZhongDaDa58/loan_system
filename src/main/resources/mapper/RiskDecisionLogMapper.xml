@@ -4,7 +4,7 @@
         "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.loan.mapper.RiskDecisionLogMapper">
 
-    <!-- W4：新增 model_version / feature_snapshot 两列（列可空，旧数据为 NULL，向后兼容） -->
+    <!-- W4：新增 model_version / feature_snapshot；阶段 2：新增 product_id / applied_auto_pass / applied_manual_review / threshold_source（可空，向后兼容） -->
     <insert id="insert" parameterType="com.loan.entity.RiskDecisionLog" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO risk_decision_log (
             application_id,
@@ -17,6 +17,10 @@
             consistency_warnings,
             model_version,
             feature_snapshot,
+            product_id,
+            applied_auto_pass,
+            applied_manual_review,
+            threshold_source,
             decision_time,
             create_time
         ) VALUES (
@@ -30,6 +34,10 @@
                      #{consistencyWarnings},
                      #{modelVersion},
                      #{featureSnapshot},
+                     #{productId},
+                     #{appliedAutoPass},
+                     #{appliedManualReview},
+                     #{thresholdSource},
                      #{decisionTime},
                      #{createTime}
                  )
@@ -48,6 +56,10 @@
             consistency_warnings AS consistencyWarnings,
             model_version        AS modelVersion,
             feature_snapshot     AS featureSnapshot,
+            product_id           AS productId,
+            applied_auto_pass    AS appliedAutoPass,
+            applied_manual_review AS appliedManualReview,
+            threshold_source     AS thresholdSource,
             decision_time        AS decisionTime,
             create_time          AS createTime
         FROM risk_decision_log
@@ -67,6 +79,10 @@
             consistency_warnings AS consistencyWarnings,
             model_version        AS modelVersion,
             feature_snapshot     AS featureSnapshot,
+            product_id           AS productId,
+            applied_auto_pass    AS appliedAutoPass,
+            applied_manual_review AS appliedManualReview,
+            threshold_source     AS thresholdSource,
             decision_time        AS decisionTime,
             create_time          AS createTime
         FROM risk_decision_log
@@ -87,6 +103,10 @@
             consistency_warnings AS consistencyWarnings,
             model_version        AS modelVersion,
             feature_snapshot     AS featureSnapshot,
+            product_id           AS productId,
+            applied_auto_pass    AS appliedAutoPass,
+            applied_manual_review AS appliedManualReview,
+            threshold_source     AS thresholdSource,
             decision_time        AS decisionTime,
             create_time          AS createTime
         FROM risk_decision_log

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.ProductThresholdHistoryMapper">
+
+    <insert id="insert" parameterType="com.loan.entity.ProductThresholdHistory"
+            useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO product_threshold_history (
+            product_id, auto_pass_score, manual_review_score, target_bad_rate,
+            threshold_source, change_reason, changed_by, create_time
+        ) VALUES (
+            #{productId}, #{autoPassScore}, #{manualReviewScore}, #{targetBadRate},
+            #{thresholdSource}, #{changeReason}, #{changedBy}, #{createTime}
+        )
+    </insert>
+
+    <select id="selectByProductId" resultType="com.loan.entity.ProductThresholdHistory">
+        SELECT
+            id,
+            product_id          AS productId,
+            auto_pass_score     AS autoPassScore,
+            manual_review_score AS manualReviewScore,
+            target_bad_rate     AS targetBadRate,
+            threshold_source    AS thresholdSource,
+            change_reason       AS changeReason,
+            changed_by          AS changedBy,
+            create_time         AS createTime
+        FROM product_threshold_history
+        WHERE product_id = #{productId}
+        ORDER BY create_time DESC
+        LIMIT #{limit}
+    </select>
+
+</mapper>

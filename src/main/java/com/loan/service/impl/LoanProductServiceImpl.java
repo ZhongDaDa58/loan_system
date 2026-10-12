@@ -13,8 +13,15 @@ import java.util.List;
 @Service
 public class LoanProductServiceImpl implements LoanProductService {
 
+    private static final org.slf4j.Logger log =
+            org.slf4j.LoggerFactory.getLogger(LoanProductServiceImpl.class);
+
     @Resource
     private LoanProductMapper loanProductMapper;
+
+    /** 阶段 2：产品阈值变更留痕 */
+    @Resource
+    private com.loan.mapper.ProductThresholdHistoryMapper productThresholdHistoryMapper;
 
 
     @Override
@@ -73,6 +80,10 @@ public class LoanProductServiceImpl implements LoanProductService {
             throw new BusinessException(404, "产品不存在");
         }
 
+        // 阶段 2：记录变更前的阈值（用于判断是否需要写变更留痕）
+        Integer previousAutoPass = existing.getAutoPassScore();
+        Integer previousManualReview = existing.getManualReviewScore();
+
         // apply editable fields if provided
         if (editDTO.getProductName() != null) existing.setProductName(editDTO.getProductName());
         if (editDTO.getMinAmount() != null) existing.setMinAmount(editDTO.getMinAmount());
@@ -82,10 +93,41 @@ public class LoanProductServiceImpl implements LoanProductService {
         if (editDTO.getInterestRate() != null) existing.setInterestRate(editDTO.getInterestRate());
         if (editDTO.getAutoPassScore() != null) existing.setAutoPassScore(editDTO.getAutoPassScore());
         if (editDTO.getManualReviewScore() != null) existing.setManualReviewScore(editDTO.getManualReviewScore());
+        if (editDTO.getTargetBadRate() != null) existing.setTargetBadRate(editDTO.getTargetBadRate());
+        if (editDTO.getTargetPassRate() != null) existing.setTargetPassRate(editDTO.getTargetPassRate());
+
+        // 阶段 1：阈值关系与范围校验（防止"人工审核线 > 自动通过线"导致人工档失效）
+        validateThresholds(existing.getAutoPassScore(), existing.getManualReviewScore());
+
+        // 阶段 2：阈值变化时标记来源与时间（管理端手工修改）
+        boolean thresholdChanged = !java.util.Objects.equals(previousAutoPass, existing.getAutoPassScore())
+                || !java.util.Objects.equals(previousManualReview, existing.getManualReviewScore());
+        if (thresholdChanged) {
+            existing.setThresholdSource("MANUAL");
+            existing.setThresholdUpdatedAt(new java.util.Date());
+        }
 
         int updated = loanProductMapper.updateProduct(existing);
         if (updated != 1) {
             throw new BusinessException(500, "更新产品失败");
+        }
+
+        // 阶段 2：写阈值变更历史（可追溯）
+        if (thresholdChanged) {
+            try {
+                com.loan.entity.ProductThresholdHistory history = new com.loan.entity.ProductThresholdHistory();
+                history.setProductId(existing.getProductId());
+                history.setAutoPassScore(existing.getAutoPassScore());
+                history.setManualReviewScore(existing.getManualReviewScore());
+                history.setTargetBadRate(existing.getTargetBadRate());
+                history.setThresholdSource(existing.getThresholdSource());
+                history.setChangeReason("管理端更新产品阈值");
+                history.setChangedBy("admin");
+                history.setCreateTime(new java.util.Date());
+                productThresholdHistoryMapper.insert(history);
+            } catch (Exception e) {
+                log.warn("⚠️ 阈值变更留痕写入失败（不影响产品更新）: {}", e.getMessage());
+            }
         }
 
         // 返回最新的详情视图
@@ -163,6 +205,10 @@ public class LoanProductServiceImpl implements LoanProductService {
         product.setInterestRate(createDTO.getInterestRate());
         product.setAutoPassScore(createDTO.getAutoPassScore());
         product.setManualReviewScore(createDTO.getManualReviewScore());
+
+        // 阶段 1：阈值关系与范围校验
+        validateThresholds(product.getAutoPassScore(), product.getManualReviewScore());
+
         product.setStatus(1); // default to enabled when created
         java.util.Date now = new java.util.Date();
         product.setCreateTime(now);
@@ -175,5 +221,33 @@ public class LoanProductServiceImpl implements LoanProductService {
 
         // return created product view
         return getProductDetail(product.getProductId());
+    }
+
+    // ==================== 阶段 1：阈值校验 ====================
+
+    /**
+     * 产品阈值校验（阈值分化基础保障）：
+     *  - 未配置（两者均为空）→ 允许，运行时回退全局默认阈值；
+     *  - 仅配置其一 → 报错（必须成对配置）；
+     *  - 范围：300–950；
+     *  - 关系：manual_review_score ≤ auto_pass_score（否则人工审核档在判定逻辑中不可达）。
+     */
+    private void validateThresholds(Integer autoPass, Integer manualReview) {
+        if (autoPass == null && manualReview == null) {
+            return;
+        }
+        if (autoPass == null || manualReview == null) {
+            throw new BusinessException(400, "自动通过线与人工审核线必须同时配置");
+        }
+        if (autoPass < 300 || autoPass > 950) {
+            throw new BusinessException(400, "自动通过线须在 300–950 之间，当前：" + autoPass);
+        }
+        if (manualReview < 300 || manualReview > 950) {
+            throw new BusinessException(400, "人工审核线须在 300–950 之间，当前：" + manualReview);
+        }
+        if (manualReview > autoPass) {
+            throw new BusinessException(400,
+                    "人工审核线不得高于自动通过线（人工=" + manualReview + "，自动=" + autoPass + "）");
+        }
     }
 }

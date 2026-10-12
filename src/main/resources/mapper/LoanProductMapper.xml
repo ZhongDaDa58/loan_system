@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.loan.mapper.LoanProductMapper">
+    <!-- 阶段 2：新增 target_bad_rate / target_pass_rate / threshold_source / threshold_updated_at（列可空，向后兼容） -->
     <select id="selectById" resultType="com.loan.entity.LoanProduct">
-        SELECT product_id, product_name, min_amount, max_amount, min_term, max_term, interest_rate, status, auto_pass_score, manual_review_score, create_time, update_time
+        SELECT product_id, product_name, min_amount, max_amount, min_term, max_term, interest_rate, status,
+               auto_pass_score, manual_review_score,
+               target_bad_rate AS targetBadRate, target_pass_rate AS targetPassRate,
+               threshold_source AS thresholdSource, threshold_updated_at AS thresholdUpdatedAt,
+               create_time, update_time
         FROM loan_product
         WHERE product_id = #{productId}
     </select>
 
     <select id="selectByIdVO" resultType="com.loan.entity.vo.LoanProductVO">
-        SELECT product_id, product_name, min_amount, max_amount, min_term, max_term, interest_rate, status, create_time, update_time, auto_pass_score, manual_review_score
+        SELECT product_id, product_name, min_amount, max_amount, min_term, max_term, interest_rate, status,
+               create_time, update_time, auto_pass_score, manual_review_score,
+               target_bad_rate AS targetBadRate, target_pass_rate AS targetPassRate,
+               threshold_source AS thresholdSource, threshold_updated_at AS thresholdUpdatedAt
         FROM loan_product
         WHERE product_id = #{productId} AND status = '1'
     </select>
@@ -37,7 +45,12 @@
             min_amount,
             max_amount,
             min_term,
-            max_term
+            max_term,
+            auto_pass_score,
+            manual_review_score,
+            target_bad_rate AS targetBadRate,
+            threshold_source AS thresholdSource,
+            threshold_updated_at AS thresholdUpdatedAt
         FROM loan_product
         ORDER BY create_time DESC
     </select>
@@ -60,6 +73,10 @@
             <if test="interestRate != null">interest_rate = #{interestRate},</if>
             <if test="autoPassScore != null">auto_pass_score = #{autoPassScore},</if>
             <if test="manualReviewScore != null">manual_review_score = #{manualReviewScore},</if>
+            <if test="targetBadRate != null">target_bad_rate = #{targetBadRate},</if>
+            <if test="targetPassRate != null">target_pass_rate = #{targetPassRate},</if>
+            <if test="thresholdSource != null">threshold_source = #{thresholdSource},</if>
+            <if test="thresholdUpdatedAt != null">threshold_updated_at = #{thresholdUpdatedAt},</if>
             update_time = NOW()
         </set>
         WHERE product_id = #{productId}
@@ -74,10 +91,14 @@
     <insert id="insertProduct" parameterType="com.loan.entity.LoanProduct">
         INSERT INTO loan_product (
             product_id, product_name, min_amount, max_amount, min_term, max_term,
-            interest_rate, status, auto_pass_score, manual_review_score, create_time, update_time
+            interest_rate, status, auto_pass_score, manual_review_score,
+            target_bad_rate, target_pass_rate, threshold_source, threshold_updated_at,
+            create_time, update_time
         ) VALUES (
             #{productId}, #{productName}, #{minAmount}, #{maxAmount}, #{minTerm}, #{maxTerm},
-            #{interestRate}, #{status}, #{autoPassScore}, #{manualReviewScore}, #{createTime}, #{updateTime}
+            #{interestRate}, #{status}, #{autoPassScore}, #{manualReviewScore},
+            #{targetBadRate}, #{targetPassRate}, #{thresholdSource}, #{thresholdUpdatedAt},
+            #{createTime}, #{updateTime}
         )
     </insert>
 </mapper>

@@ -16,6 +16,13 @@ public class LoanProductVO {
     private java.util.Date updateTime;
     private Integer autoPassScore;
     private Integer manualReviewScore;
+
+    // ===== 阶段 2：阈值分化相关字段 =====
+    private BigDecimal targetBadRate;      // 目标坏账率
+    private BigDecimal targetPassRate;     // 最低目标通过率
+    private String thresholdSource;        // 阈值来源：MANUAL / CALIBRATED / DEFAULT
+    private java.util.Date thresholdUpdatedAt; // 阈值最近变更时间
+
     private String interestRateDesc; // 利率描述（如“6.5%/年”）
     private String amountRange;      // 金额范围（如“1000-50000元”）
     private String termRange;        // 期限范围（如“3-12个月”）

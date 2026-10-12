@@ -33,6 +33,20 @@ public class RiskDecisionLog {
      */
     private String featureSnapshot;
 
+    // ===== 阶段 2：记录本次生效的产品级阈值（阈值分化可追溯） =====
+
+    /** 本次决策使用的产品 ID */
+    private String productId;
+
+    /** 本次生效的自动通过线 */
+    private Integer appliedAutoPass;
+
+    /** 本次生效的人工审核线 */
+    private Integer appliedManualReview;
+
+    /** 阈值来源：PRODUCT（产品配置） / DEFAULT（全局默认） */
+    private String thresholdSource;
+
     private Date decisionTime;
 
     private Date createTime;

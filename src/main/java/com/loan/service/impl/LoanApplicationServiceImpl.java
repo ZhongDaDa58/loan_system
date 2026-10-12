@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class LoanApplicationServiceImpl implements LoanApplicationService {
@@ -36,6 +37,10 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     @Resource
     private LoanApplicationMapper loanApplicationMapper;
+
+    /** 多模型评分（v3/v4/v4-fusion，支持多源特征），用于让多源数据进入申请决策 */
+    @Resource
+    private MultiModelScorecardService multiModelScorecardService;
 
     @Resource
     private LoanProductService loanProductService;
@@ -57,6 +62,14 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     @Resource
     private RiskDecisionLogService riskDecisionLogService;
+
+    /** 合同服务：自动通过后生成合同草稿（与人工审批一致） */
+    @Resource
+    private ContractService contractService;
+
+    /** 阶段 2：产品级阈值解析（产品配置优先，缺失时回退全局默认） */
+    @Resource
+    private com.loan.scorecard.ProductThresholdResolver productThresholdResolver;
 
     @Resource
     private CreditScoreSyncService creditScoreSyncService;
@@ -125,18 +138,21 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
         UserProfileDTO userProfile = buildUserProfileFromProfile(creditProfile);
 
-        log.info("🔍 开始调用评分卡模型计算分数...");
-        Integer scorecardScore = scorecardService.calculateScoreOnly(userProfile);
-        log.info("✅ 评分卡计算完成，得分: {}", scorecardScore);
+        log.info("🔍 开始评分（优先多源多模型，多源不足时回落单模型）...");
+        ScoreOutcome scoreOutcome = calculateScorePreferMultiSource(userId, userProfile);
+        Integer scorecardScore = scoreOutcome.score();
+        log.info("✅ 评分完成，得分: {}，模型: {}，来源: {}，缺失特征: {}/{}",
+                scorecardScore, scoreOutcome.modelKey(), scoreOutcome.source(),
+                scoreOutcome.missingFeatures(), scoreOutcome.requiredFeatures());
 
-        if (product.getAutoPassScore() == null || product.getManualReviewScore() == null) {
-            throw new BusinessException(500, "产品评分卡配置不完整，请联系管理员");
-        }
+        // 阶段 2：产品阈值解析（产品配置优先；未配置时回退全局默认阈值）
+        com.loan.scorecard.ProductThresholdResolver.ResolvedThresholds thresholds =
+                productThresholdResolver.resolve(product);
 
         ScorecardResultEnum scorecardResult = RiskControlUtil.evaluateScorecard(
                 scorecardScore,
-                product.getAutoPassScore(),
-                product.getManualReviewScore()
+                thresholds.autoPassScore(),
+                thresholds.manualReviewScore()
         );
 
         log.info("🎯 评分卡决策: {}, 分数: {}", scorecardResult.getDesc(), scorecardScore);
@@ -192,9 +208,21 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
                 null,
                 null
         );
+        // 阶段 2：记录本次生效的产品阈值与来源（阈值分化可追溯）
+        riskLog.setProductId(product.getProductId());
+        riskLog.setAppliedAutoPass(thresholds.autoPassScore());
+        riskLog.setAppliedManualReview(thresholds.manualReviewScore());
+        riskLog.setThresholdSource(thresholds.source());
+        // 记录实际使用的评分模型（v3 单模型 / v4 多源多模型），便于分数追溯
+        riskLog.setModelVersion(scoreOutcome.modelKey());
         riskDecisionLogService.logDecision(riskLog);
 
         creditScoreSyncService.syncScorecardToCreditScore(userId, scorecardScore, application.getApplicationId());
+
+        // 自动通过：与人工审批保持一致，自动生成合同草稿（失败不阻断申请）
+        if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
+            generateDraftContractQuietly(application.getApplicationId());
+        }
 
         String message;
         if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
@@ -263,18 +291,21 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
         UserProfileDTO userProfile = transformationResult.getUserProfile();
 
-        log.info("🔍 开始调用评分卡模型计算分数...");
-        Integer scorecardScore = scorecardService.calculateScoreOnly(userProfile);
-        log.info("✅ 评分卡计算完成，得分: {}", scorecardScore);
+        log.info("🔍 开始评分（优先多源多模型，多源不足时回落单模型）...");
+        ScoreOutcome scoreOutcome = calculateScorePreferMultiSource(userId, userProfile);
+        Integer scorecardScore = scoreOutcome.score();
+        log.info("✅ 评分完成，得分: {}，模型: {}，来源: {}，缺失特征: {}/{}",
+                scorecardScore, scoreOutcome.modelKey(), scoreOutcome.source(),
+                scoreOutcome.missingFeatures(), scoreOutcome.requiredFeatures());
 
-        if (product.getAutoPassScore() == null || product.getManualReviewScore() == null) {
-            throw new BusinessException(500, "产品评分卡配置不完整，请联系管理员");
-        }
+        // 阶段 2：产品阈值解析（产品配置优先；未配置时回退全局默认阈值）
+        com.loan.scorecard.ProductThresholdResolver.ResolvedThresholds thresholds =
+                productThresholdResolver.resolve(product);
 
         ScorecardResultEnum scorecardResult = RiskControlUtil.evaluateScorecard(
                 scorecardScore,
-                product.getAutoPassScore(),
-                product.getManualReviewScore()
+                thresholds.autoPassScore(),
+                thresholds.manualReviewScore()
         );
 
         log.info("🎯 评分卡决策: {}, 分数: {}", scorecardResult.getDesc(), scorecardScore);
@@ -327,12 +358,24 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
                 validationErrors,
                 consistencyWarnings
         );
+        // 阶段 2：记录本次生效的产品阈值与来源（阈值分化可追溯）
+        riskLog.setProductId(application.getProductId());
+        riskLog.setAppliedAutoPass(thresholds.autoPassScore());
+        riskLog.setAppliedManualReview(thresholds.manualReviewScore());
+        riskLog.setThresholdSource(thresholds.source());
+        // 记录实际使用的评分模型（v3 单模型 / v4 多源多模型），便于分数追溯
+        riskLog.setModelVersion(scoreOutcome.modelKey());
         riskDecisionLogService.logDecision(riskLog);
 
         creditScoreSyncService.syncScorecardToCreditScore(userId, scorecardScore, application.getApplicationId());
 
         // 自动保存/更新信用档案（下次申请无需重复填写）
         autoSaveCreditProfile(userId, basicInfo, userProfile, scorecardScore);
+
+        // 自动通过：与人工审批保持一致，自动生成合同草稿（失败不阻断申请）
+        if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
+            generateDraftContractQuietly(application.getApplicationId());
+        }
 
         String message;
         if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
@@ -344,6 +387,76 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         }
 
         return Result.success(message);
+    }
+
+    /**
+     * 生成合同草稿（自动通过路径）
+     * 说明：合同生成失败不影响申请结果——用户进入签约页时后端会兜底补生成。
+     */
+    private void generateDraftContractQuietly(String applicationId) {
+        try {
+            contractService.generateDraftContract(applicationId);
+            log.info("📄 合同草稿已生成: {}", applicationId);
+        } catch (Exception e) {
+            log.warn("⚠️ 合同草稿生成失败（不影响申请，签约时会重试）: {} - {}", applicationId, e.getMessage());
+        }
+    }
+
+    /**
+     * 评分（优先「多源特征 + 多模型」；多源覆盖不足时回落单模型）
+     *
+     * 目的：让已同步的多源数据（征信/运营商/设备）真正进入申请决策。
+     * 保护：未授权/未同步多源的用户仍走原有单模型 v3，行为与接入前一致。
+     */
+    private ScoreOutcome calculateScorePreferMultiSource(String userId, UserProfileDTO userProfile) {
+        try {
+            Map<String, Object> features = featureTransformationService.buildMultiSourceFeatures(userId);
+            if (features != null && !features.isEmpty()) {
+                // 基础特征以档案口径为准（缺失时补齐，避免与单模型口径不一致）
+                fillIfAbsent(features, "revolving_util", userProfile.getRevolvingUtil());
+                fillIfAbsent(features, "age", userProfile.getAge());
+                fillIfAbsent(features, "debt_ratio", userProfile.getDebtRatio());
+                fillIfAbsent(features, "monthly_income", userProfile.getMonthlyIncome());
+                fillIfAbsent(features, "credit_lines", userProfile.getCreditLines());
+                fillIfAbsent(features, "dependents", userProfile.getDependents());
+
+                com.loan.entity.dto.MultiModelScoreRequest request = new com.loan.entity.dto.MultiModelScoreRequest();
+                request.setFeatures(features);
+                request.setUserId(userId);
+
+                com.loan.entity.vo.MultiModelScoreResultVO result = multiModelScorecardService.calculate(request);
+                if (result != null && result.getTotalScore() != null) {
+                    int required = result.getRequiredFeatureCount() == null ? 0 : result.getRequiredFeatureCount();
+                    int missing = result.getMissingFeatures() == null ? 0 : result.getMissingFeatures().size();
+                    // 多源覆盖率不足一半时回落单模型，避免"缺特征导致分数漂移"
+                    if (required == 0 || missing * 2 <= required) {
+                        log.info("✅ 多源多模型评分: model={} score={} 缺失特征={}/{}",
+                                result.getModelKey(), result.getTotalScore(), missing, required);
+                        return new ScoreOutcome(result.getTotalScore(), result.getModelKey(),
+                                result.getModelVersion(), missing, required, "MULTI");
+                    }
+                    log.warn("⚠️ 多源特征覆盖不足（缺失 {}/{}），回落单模型评分", missing, required);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ 多源多模型评分异常，回落单模型: {}", e.getMessage());
+        }
+
+        Integer singleScore = scorecardService.calculateScoreOnly(userProfile);
+        log.info("✅ 单模型评分（回落）: score={}", singleScore);
+        return new ScoreOutcome(singleScore, "v3", null, null, 6, "SINGLE");
+    }
+
+    /** 仅当目标特征缺失时补齐（保持多源链路给出的值优先） */
+    private void fillIfAbsent(Map<String, Object> features, String key, Object value) {
+        if (features.get(key) == null && value != null) {
+            features.put(key, value);
+        }
+    }
+
+    /** 评分结果及来源（用于日志与决策留痕追溯） */
+    private record ScoreOutcome(Integer score, String modelKey, String modelVersion,
+                                Integer missingFeatures, Integer requiredFeatures, String source) {
     }
 
     /**
@@ -419,8 +532,44 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Override
     public Result<List<LoanApplicationVO>> queryApplyProgress(String userId) {
         List<LoanApplicationVO> applicationList = loanApplicationMapper.selectByUserId(userId);
+        // 兜底：已通过但合同未生成的申请（历史数据 / 自动通过早期版本），在用户查看进度时自动补生成
+        if (applicationList != null) {
+            for (LoanApplicationVO vo : applicationList) {
+                repairMissingContract(vo);
+            }
+        }
         return Result.success(applicationList);
     }
+
+    /**
+     * 兜底修复：申请已通过但合同草稿缺失时补生成，并回填 VO
+     *
+     * 背景：App 进度页仅在 contractPath 非空且 contractStatus=1 时显示「签署合同」按钮，
+     *       合同缺失会导致用户看不到按钮、无法签约，流程中断。
+     * 该操作幂等：已有合同则直接返回。
+     */
+    private void repairMissingContract(LoanApplicationVO vo) {
+        try {
+            if (vo.getContractPath() != null && !vo.getContractPath().isEmpty()) {
+                return;
+            }
+            if (!ApplicationStatusEnum.APPROVED.getCode().equals(vo.getApplicationStatus())) {
+                return;
+            }
+            Result<String> draft = contractService.generateDraftContract(vo.getApplicationId());
+            if (draft != null && Integer.valueOf(200).equals(draft.getCode())) {
+                LoanApplication latest = loanApplicationMapper.selectByApplicationId(vo.getApplicationId());
+                if (latest != null) {
+                    vo.setContractPath(latest.getContractPath());
+                    vo.setContractStatus(latest.getContractStatus());
+                }
+                log.info("🔧 已补生成缺失的合同草稿: {}", vo.getApplicationId());
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ 补生成合同失败（不影响进度查询）: {} - {}", vo.getApplicationId(), e.getMessage());
+        }
+    }
+
     @Override
     public Result<LoanApplicationBasicVO> getApplicationBasic(String applicationId) {
         log.info("🔍 查询申请基本信息: {}", applicationId);
