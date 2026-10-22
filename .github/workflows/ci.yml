@@ -26,6 +26,40 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
+    # ⚠️ 为什么需要这两个 service（第一次跑 CI 时踩的坑）：
+    #   项目里有 5 个 @SpringBootTest 类（LoanApplicationTests / SysUserMapperTest /
+    #   ScorecardEngineTest / SysUserServiceTest / MultiSourceSyncTest）**不带 Testcontainers**，
+    #   它们直接连 application.properties 里配的 localhost:3306 + localhost:6379。
+    #   本地之所以能过，是因为开发机上有 MySQL/Redis 在跑；
+    #   GitHub runner 上什么都没有 → Spring 上下文起不来 →
+    #       'flywayInitializer' ... Unable to obtain connection from database: Communications link failure
+    #   而且第一个类失败后会连带后续类报 "ApplicationContext failure threshold exceeded"。
+    #
+    #   注意：这不是 Testcontainers 的集成测试失败 —— 那两个类是自带容器的，与这里无关。
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: 114514      # 与 application.properties 的 ${DB_PASSWORD:114514} 对齐
+          MYSQL_DATABASE: loan_risk_control # Flyway 会在此库里从 V1 建表，无需手工初始化
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -p114514"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        # application.properties 里 spring.cache.type=redis，缺了 Redis 上下文同样起不来
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
