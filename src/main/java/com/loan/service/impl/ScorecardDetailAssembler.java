@@ -243,4 +243,66 @@ public final class ScorecardDetailAssembler {
                 return "未知";
         }
     }
+
+    // ==================== 领域对象转换（阶段四 4.2 第 5 步补） ====================
+
+    /**
+     * 从信用档案实体构建评分卡入参。
+     *
+     * <p><b>为什么给默认值</b>：评分卡对每个特征都有固定 WOE 分箱，缺值时无法落箱。
+     * 用"业务上最保守的中性值"填充（年龄 18 = 最低可申请年龄、利用率和负债率 0 = 无负担），
+     * 可以让模型仍然输出分数，而不是直接崩掉或返回 null。
+     *
+     * <p><b>注意</b>：这只是"让流程能走下去"的兜底，不代表数据真实。
+     * 真正缺数据的情况由 {@code RuleEvaluationService#missingRequiredMultiSources}
+     * 显式暴露并转人工（避免静默放行）。
+     */
+    public static com.loan.entity.dto.UserProfileDTO buildUserProfileFromProfile(
+            com.loan.entity.UserCreditProfile profile) {
+        com.loan.entity.dto.UserProfileDTO userProfile = new com.loan.entity.dto.UserProfileDTO();
+        userProfile.setRevolvingUtil(profile.getRevolvingUtil() != null ? profile.getRevolvingUtil() : BigDecimal.ZERO);
+        userProfile.setAge(profile.getAge() != null ? profile.getAge() : 18);
+        userProfile.setDebtRatio(profile.getDebtRatio() != null ? profile.getDebtRatio() : BigDecimal.ZERO);
+        userProfile.setMonthlyIncome(profile.getMonthlyIncome());
+        userProfile.setCreditLines(profile.getCreditLines() != null ? profile.getCreditLines() : 0);
+        userProfile.setDependents(profile.getDependents() != null ? profile.getDependents() : 0);
+        return userProfile;
+    }
+
+    /**
+     * 枚举 → 数据库存的决策码。
+     *
+     * <p>为什么要转换：{@code ScorecardResultEnum} 用的是 {@code AUTO_PASS}，
+     * 而 {@code loan_application.scorecard_decision} 存的是 {@code AUTO_APPROVE}。
+     * <b>两套词汇不一致是历史包袱</b>，这里集中一处转换，避免散落各处。
+     */
+    public static String mapScorecardResultToDecisionCode(
+            com.loan.entity.enums.ScorecardResultEnum result) {
+        if (result == null) {
+            return "UNKNOWN";
+        }
+        switch (result) {
+            case AUTO_PASS:
+                return "AUTO_APPROVE";
+            case MANUAL_REVIEW:
+                return "MANUAL_REVIEW";
+            case AUTO_REJECT:
+                return "REJECT";
+            default:
+                return "UNKNOWN";
+        }
+    }
+
+    /** 特征转换明细（存进 risk_decision_log 供审计/回溯评分过程） */
+    public static java.util.Map<String, Object> buildTransformationDetails(
+            com.loan.entity.dto.UserProfileDTO profile) {
+        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
+        details.put("age", profile.getAge());
+        details.put("dependents", profile.getDependents());
+        details.put("monthlyIncome", profile.getMonthlyIncome());
+        details.put("debtRatio", profile.getDebtRatio());
+        details.put("revolvingUtil", profile.getRevolvingUtil());
+        details.put("creditLines", profile.getCreditLines());
+        return details;
+    }
 }

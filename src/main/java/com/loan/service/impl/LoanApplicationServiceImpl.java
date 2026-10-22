@@ -105,6 +105,10 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private RuleEvaluationService ruleEvaluationService;
 
+    /** 阶段四 4.2：信用档案自动保存（提交申请时顺带写入） */
+    @Resource
+    private CreditProfileAutoSaveService creditProfileAutoSaveService;
+
     /** 阶段四 4.2：申请查询（只读职责，与提交流程分离） */
     @Resource
     private LoanApplicationQueryService queryService;
@@ -182,7 +186,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
             throw new BusinessException(400, "请先创建信用档案，完善个人信息后再申请贷款");
         }
 
-        UserProfileDTO userProfile = buildUserProfileFromProfile(creditProfile);
+        UserProfileDTO userProfile = ScorecardDetailAssembler.buildUserProfileFromProfile(creditProfile);
 
         // 提前生成申请 ID：规则评估需要按申请单写入命中流水
         String applicationId = IdUtil.generateId();
@@ -300,7 +304,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         application.setScorecardScore(scorecardScore);
         application.setDisbursementCardId(disbursementCardId);
 
-        String decisionCode = mapScorecardResultToDecisionCode(scorecardResult);
+        String decisionCode = ScorecardDetailAssembler.mapScorecardResultToDecisionCode(scorecardResult);
         application.setScorecardDecision(decisionCode);
 
         // ===== 1.5 业务指标埋点 =====
@@ -348,7 +352,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
         FeatureTransformationResultDTO transformationResult = FeatureTransformationResultDTO.success(
                 userProfile,
-                buildTransformationDetails(userProfile)
+                ScorecardDetailAssembler.buildTransformationDetails(userProfile)
         );
 
         RiskDecisionLog riskLog = riskDecisionLogService.buildLogFromTransformation(
@@ -484,7 +488,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         application.setScorecardScore(scorecardScore);
         application.setDisbursementCardId(disbursementCardId);
 
-        String decisionCode = mapScorecardResultToDecisionCode(scorecardResult);
+        String decisionCode = ScorecardDetailAssembler.mapScorecardResultToDecisionCode(scorecardResult);
         application.setScorecardDecision(decisionCode);
 
         switch (scorecardResult) {
@@ -534,7 +538,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         creditScoreSyncService.syncScorecardToCreditScore(userId, scorecardScore, application.getApplicationId());
 
         // 自动保存/更新信用档案（下次申请无需重复填写）
-        autoSaveCreditProfile(userId, basicInfo, userProfile, scorecardScore);
+        creditProfileAutoSaveService.saveOrUpdate(userId, basicInfo, userProfile, scorecardScore);
 
         // 自动通过：与人工审批保持一致，自动生成合同草稿（失败不阻断申请）
         if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
@@ -595,76 +599,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
                                 Integer missingFeatures, Integer requiredFeatures, String source) {
     }
 
-    /**
-     * 自动保存/更新信用档案
-     */
-    private void autoSaveCreditProfile(String userId, UserBasicInfoDTO basicInfo,
-                                        UserProfileDTO userProfile, Integer scorecardScore) {
-        try {
-            UserCreditProfile existing = userCreditProfileMapper.selectByUserId(userId);
-            boolean isNew = (existing == null);
-
-            if (isNew) {
-                existing = new UserCreditProfile();
-                existing.setUserId(userId);
-                existing.setCreateTime(new Date());
-            }
-
-            // 个人信息
-            UserBasicInfoDTO.PersonalInfo p = basicInfo.getPersonalInfo();
-            if (p != null) {
-                existing.setName(p.getName());
-                existing.setIdCard(p.getIdCard());
-                existing.setPhone(p.getPhone());
-                existing.setEmail(p.getEmail());
-                existing.setGender(p.getGender());
-                existing.setEducation(p.getEducation());
-                existing.setOccupation(p.getOccupation());
-                if (p.getBirthDate() != null) {
-                    existing.setBirthDate(java.sql.Date.valueOf(p.getBirthDate()));
-                }
-            }
-
-            // JSON 序列化（注册 JavaTimeModule 支持 LocalDate）
-            try {
-                ObjectMapper om = new ObjectMapper()
-                        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-                        .registerModule(new JavaTimeModule());
-                if (basicInfo.getFamilyInfo() != null) {
-                    existing.setFamilyInfo(om.writeValueAsString(basicInfo.getFamilyInfo()));
-                }
-                if (basicInfo.getFinancialInfo() != null) {
-                    existing.setFinancialInfo(om.writeValueAsString(basicInfo.getFinancialInfo()));
-                }
-                if (basicInfo.getEmploymentInfo() != null) {
-                    existing.setEmploymentInfo(om.writeValueAsString(basicInfo.getEmploymentInfo()));
-                }
-            } catch (Exception e) {
-                log.warn("序列化档案 JSON 失败: {}", e.getMessage());
-            }
-
-            // 评分特征
-            existing.setAge(userProfile.getAge());
-            existing.setDebtRatio(userProfile.getDebtRatio());
-            existing.setMonthlyIncome(userProfile.getMonthlyIncome());
-            existing.setCreditLines(userProfile.getCreditLines());
-            existing.setDependents(userProfile.getDependents());
-            existing.setRevolvingUtil(userProfile.getRevolvingUtil());
-            existing.setCreditScore(scorecardScore);
-            existing.setUpdateTime(new Date());
-
-            if (isNew) {
-                userCreditProfileMapper.insert(existing);
-            } else {
-                userCreditProfileMapper.update(existing);
-            }
-
-            log.info("✅ 信用档案已自动{}", isNew ? "创建" : "更新");
-        } catch (Exception e) {
-            log.warn("⚠️ 自动保存信用档案失败（不影响申请）: {}", e.getMessage());
-        }
-    }
-
     @Override
     public Result<List<LoanApplicationVO>> queryApplyProgress(String userId) {
         // 阶段四 4.2 第 5 步：查询逻辑已移到 LoanApplicationQueryService（只读职责与提交流程分离）
@@ -686,43 +620,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         return queryService.getScorecardDetail(applicationId);
     }
 
-    /**
-     * 从信用档案构建评分所需的 UserProfileDTO
-     */
-    private UserProfileDTO buildUserProfileFromProfile(UserCreditProfile profile) {
-        UserProfileDTO userProfile = new UserProfileDTO();
-        userProfile.setRevolvingUtil(profile.getRevolvingUtil() != null ? profile.getRevolvingUtil() : BigDecimal.ZERO);
-        userProfile.setAge(profile.getAge() != null ? profile.getAge() : 18);
-        userProfile.setDebtRatio(profile.getDebtRatio() != null ? profile.getDebtRatio() : BigDecimal.ZERO);
-        userProfile.setMonthlyIncome(profile.getMonthlyIncome());
-        userProfile.setCreditLines(profile.getCreditLines() != null ? profile.getCreditLines() : 0);
-        userProfile.setDependents(profile.getDependents() != null ? profile.getDependents() : 0);
-        return userProfile;
-    }
-
-    private String mapScorecardResultToDecisionCode(ScorecardResultEnum result) {
-        switch (result) {
-            case AUTO_PASS:
-                return "AUTO_APPROVE";
-            case MANUAL_REVIEW:
-                return "MANUAL_REVIEW";
-            case AUTO_REJECT:
-                return "REJECT";
-            default:
-                return "UNKNOWN";
-        }
-    }
-
-    private java.util.Map<String, Object> buildTransformationDetails(UserProfileDTO profile) {
-        java.util.Map<String, Object> details = new java.util.LinkedHashMap<>();
-        details.put("age", profile.getAge());
-        details.put("dependents", profile.getDependents());
-        details.put("monthlyIncome", profile.getMonthlyIncome());
-        details.put("debtRatio", profile.getDebtRatio());
-        details.put("revolvingUtil", profile.getRevolvingUtil());
-        details.put("creditLines", profile.getCreditLines());
-        return details;
-    }
 
 
 
@@ -753,7 +650,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         application.setCreditScore(creditProfile.getCreditScore());   // NOT NULL：沿用档案分
         application.setScorecardScore(null);                           // L1 已拦截，未进入评分
         application.setDisbursementCardId(disbursementCardId);
-        application.setScorecardDecision(mapScorecardResultToDecisionCode(ScorecardResultEnum.AUTO_REJECT));
+        application.setScorecardDecision(ScorecardDetailAssembler.mapScorecardResultToDecisionCode(ScorecardResultEnum.AUTO_REJECT));
         application.setApplicationStatus(ApplicationStatusEnum.REJECTED.getCode());
         application.setApplyTime(new Date());
         loanApplicationMapper.insert(application);
