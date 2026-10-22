@@ -174,7 +174,6 @@ public class LoanApplicationQueryService {
 
         identityVO.setUserId(userId);
         identityVO.setUserPhone(ScorecardDetailAssembler.maskPhone(user.getPhone()));
-        identityVO.setUserRealName(userIdentity.getUserRealName());
         identityVO.setUserName(user.getRealName());
         identityVO.setKycStatus(user.getKycStatus());
         identityVO.setKycStatusDesc(ScorecardDetailAssembler.getKycStatusDesc(user.getKycStatus()));
@@ -182,6 +181,10 @@ public class LoanApplicationQueryService {
         identityVO.setLastLoginTime(user.getUpdateTime());
 
         if (userIdentity != null) {
+            // ⚠️ 修复（阶段四收尾，单元测试发现）：原代码在 if 之前就调 userIdentity.getUserRealName()，
+            //    申请人未完成实名（无 user_identity 记录）时必然 NPE → 审核端 500。
+            //    这不是拆分引入的，是拆分前就有的缺陷，搬到本类时原样保留、现在补上判空。
+            identityVO.setUserRealName(userIdentity.getUserRealName());
             identityVO.setIdCardNumber(ScorecardDetailAssembler.maskIdCard(userIdentity.getIdCardNumber()));
             identityVO.setVerifyStatus(userIdentity.getVerifyStatus());
             identityVO.setVerifyStatusDesc(ScorecardDetailAssembler.getVerifyStatusDesc(userIdentity.getVerifyStatus()));
