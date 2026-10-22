@@ -240,8 +240,12 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>17</source>
-                    <target>17</target>
+                    <!-- 阶段四 CI 修复：用 release 而不是 source/target。
+                         source/target 只保证「字节码版本兼容」，**不限制 API**：
+                         在 JDK 24 上编译可以调用 JDK 18+ 的 API，本地编译通过，
+                         但 CI（JDK 17）会找不到这些方法 → 编译失败。
+                         release=17 强制「只用 JDK 17 的 API」，本地就能提前暴露问题。 -->
+                    <release>${java.version}</release>
                     <encoding>UTF-8</encoding>
                     <annotationProcessorPaths>
                         <!-- 阶段四 4.5：顺序有讲究 —— lombok 先跑生成 getter/setter，

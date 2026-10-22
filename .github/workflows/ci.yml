@@ -38,6 +38,8 @@ jobs:
 
       # 缓存 ~/.m2/repository，key 跟 pom.xml 的 hash 绑定
       # pom 变了就重新下载，没变就直接命中（省 1~2 分钟）
+      # 注意：actions/cache v4 在 Node 24 runner 上会报 "Node.js 20 deprecated" 警告，
+      # 只是警告不影响功能；等 v5 稳定后再升级。
       - name: 缓存 Maven 依赖
         uses: actions/cache@v4
         with:
@@ -53,8 +55,28 @@ jobs:
       # `verify` = compile + test + jacoco:check（覆盖率门槛 25%）
       # 集成测试用 Testcontainers → 需要 Docker。
       # GitHub Actions 的 ubuntu-latest **自带 Docker**，所以会真跑，不会被 disabledWithoutDocker 跳过。
+      #
+      # 时区显式指定 Asia/Shanghai：集成测试里的日期断言按本地时区写，
+      # runner 默认 UTC 会让"今天/明天"类断言在跨零点时失败。
       - name: 构建并运行全部测试（含覆盖率门槛）
-        run: ./mvnw -B --no-transfer-progress verify
+        run: ./mvnw -B --no-transfer-progress -Duser.timezone=Asia/Shanghai verify
+
+      # 测试失败时，把失败摘要直接打到日志 —— 否则只能下载 artifact 才知道哪个测试挂了，
+      # 排查要多花好几步（第一次跑 CI 时就吃了这个亏）
+      - name: 失败时打印失败测试摘要
+        if: failure()
+        run: |
+          echo "========== 失败的测试 =========="
+          if ls target/surefire-reports/*.txt >/dev/null 2>&1; then
+            grep -l -E "<<< (FAILURE|ERROR)" target/surefire-reports/*.txt | while read f; do
+              echo "----- $f -----"
+              head -40 "$f"
+            done
+          else
+            echo "(没有 surefire 报告 → 说明失败发生在测试阶段之前，如编译)"
+          fi
+          echo "========== 报告目录 =========="
+          ls -la target/surefire-reports/ 2>/dev/null || echo "(目录不存在)"
 
       # 测试挂了要能看原因，不然只知道"红了"
       - name: 上传测试报告
