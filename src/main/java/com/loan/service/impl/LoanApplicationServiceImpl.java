@@ -81,10 +81,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     /** 模型注册表（T3：用于算出"落选特征"—— 在多源宽表里但未进入当前默认模型的字段） */
 
-    /** 精细化定价服务（设计 §2：按评分区间匹配利率档位） */
-    @Resource
-    private PricingService pricingService;
-
     /** 业务指标（阶段一 1.5：把风控决策翻译成 Prometheus 指标） */
     @Resource
     private com.loan.metrics.RiskMetrics riskMetrics;
@@ -93,9 +89,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     @Resource
     private SysUserMapper sysUserMapper;
-
-    @Resource
-    private UserCreditProfileMapper userCreditProfileMapper;
 
     /** 阶段四 4.3：幂等控制（防连点重复提交） */
     @Resource
@@ -112,6 +105,10 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     /** 阶段四 4.2：申请准入校验（KYC / 逾期 / 金额期限 / 银行卡 / 信用档案） */
     @Resource
     private ApplicationEligibilityChecker eligibilityChecker;
+
+    /** 阶段四 4.2：决策链（阈值 → 评分决策 → L3 修正 → L1 归并 → 降额 → 定价 → 多源降级） */
+    @Resource
+    private RiskDecisionChainService decisionChainService;
 
     /** 阶段四 4.2：申请查询（只读职责，与提交流程分离） */
     @Resource
@@ -182,79 +179,14 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
                 scoreOutcome.missingFeatures(), scoreOutcome.requiredFeatures());
 
         // 阶段 2：产品阈值解析（产品配置优先；未配置时回退全局默认阈值）
-        com.loan.scorecard.ProductThresholdResolver.ResolvedThresholds thresholds =
-                productThresholdResolver.resolve(product);
-
-        ScorecardResultEnum scorecardResult = RiskControlUtil.evaluateScorecard(
-                scorecardScore,
-                thresholds.autoPassScore(),
-                thresholds.manualReviewScore()
-        );
-
-        log.info("🎯 评分卡决策: {}, 分数: {}", scorecardResult.getDesc(), scorecardScore);
-
-        // ===== 阶段 3-b：L3 策略决策层「后置修正」（输入 = 分 + 标签，不重算信用分）=====
-        // 优先级 REJECT > MANUAL > DOWNGRADE > FLAG；规则默认 enabled=0 → 无命中
-        com.loan.rule.RiskRuleEngine.RuleOutcome ruleOutcome =
-                ruleEvaluationService.evaluate(applicationId, userId, "L3", scorecardScore, applyAmount, userProfile);
-        ScorecardResultEnum beforeRule = scorecardResult;
-        scorecardResult = RuleDecisionSupport.mergeRuleDecision(scorecardResult, ruleOutcome.action());
-        if (scorecardResult != beforeRule) {
-            log.info("🛡 规则层覆盖决策: {} → {}（命中 {} 条, 动作={}）",
-                    beforeRule.getDesc(), scorecardResult.getDesc(),
-                    ruleOutcome.hits().size(), ruleOutcome.action());
-        }
-
-        // ===== S2：L1 层非 REJECT 动作参与决策归并 =====
-        // 背景：L1 层原先只处理 REJECT（短路），其 MANUAL / DOWNGRADE / FLAG 命中被**直接丢弃**
-        // → 设计 §8 要求的「规则命中存疑标签 / 操作行为异常 → 转人工」通路断开。
-        // 处理：REJECT 仍然短路不评分；非 REJECT 动作在此累计到最终决策（与 L3 动作按同一优先级归并）。
-        String l1Action = l1Outcome.action();
-        if (l1Action != null && !"REJECT".equalsIgnoreCase(l1Action)) {
-            ScorecardResultEnum beforeL1 = scorecardResult;
-            scorecardResult = RuleDecisionSupport.mergeRuleDecision(scorecardResult, l1Action);
-            if (scorecardResult != beforeL1) {
-                log.info("🛡 L1 层动作参与归并: {} → {}（L1 命中动作={}，命中 {} 条）",
-                        beforeL1.getDesc(), scorecardResult.getDesc(),
-                        l1Action, l1Outcome.hits().size());
-            }
-        }
-
-        // ===== P-025：规则降额（DOWNGRADE）闭环 =====
-        // 决策（2026-10-13）：以**申请金额**为基数，按规则比例下调；
-        // action_param 语义 = **保留比例**（如 "0.6" → 只放 60%）。
-        // 说明：评分卡不含金额参数（信用风险 ≠ 额度政策），故降额只能以申请金额为基准。
-        BigDecimal approvedAmount = null;   // null = 未降额（放款/合同回退 apply_amount）
-        if ("DOWNGRADE".equalsIgnoreCase(ruleOutcome.action())) {
-            // 4.2 拆分：纯函数已移到 RuleDecisionSupport
-        BigDecimal ratio = RuleDecisionSupport.parseRetainRatio(ruleOutcome.actionParam());
-            if (ratio != null && ratio.signum() > 0) {
-                approvedAmount = applyAmount.multiply(ratio)
-                        .setScale(2, java.math.RoundingMode.HALF_UP);
-                log.warn("📉 规则降额：申请 {} → 批准 {}（保留比例 {}）",
-                        applyAmount, approvedAmount, ratio);
-            } else {
-                log.warn("⚠️ DOWNGRADE 命中但 action_param 非有效保留比例（{}），按不降额处理",
-                        ruleOutcome.actionParam());
-            }
-        }
-
-        // ===== 精细化定价（设计 §2「最终决策与精细化定价」）=====
-        // 按评分匹配利率档位（loan_pricing_tier，配置驱动、可在线维护）；
-        // 未命中档位时回退产品自带利率，现有行为不变。
-        PricingService.PricingOutcome pricing =
-                pricingService.resolveRate(product.getProductId(), scorecardScore);
-
-        // ===== 阶段 3-c：多源数据完备性强制（device + credit）=====
-        // 不再"字段缺失即静默放行"：核心多源缺失时，把「自动通过」降为「人工审核」，
-        // 由审核员判断属于"用户未授权/未同步多源"还是"真实的低风险客户"。
-        // 只降级 AUTO_PASS；AUTO_REJECT 与 MANUAL_REVIEW 不受影响。
-        List<String> missingMultiSources = ruleEvaluationService.missingRequiredMultiSources(userId);
-        if (scorecardResult == ScorecardResultEnum.AUTO_PASS && !missingMultiSources.isEmpty()) {
-            log.warn("⚠️ 多源数据不足（缺少 {}），自动通过降为转人工：申请={}",
-                    missingMultiSources, applicationId);
-            scorecardResult = ScorecardResultEnum.MANUAL_REVIEW;
-        }
+        // 阶段四 4.2 第 6 步：决策链已移到 RiskDecisionChainService
+        // （阈值解析 → 评分决策 → L3 修正 → L1 归并 → 规则降额 → 精细化定价 → 多源降级）
+        RiskDecisionChainService.DecisionResult decision = decisionChainService.decide(
+                applicationId, userId, product, scorecardScore, applyAmount, userProfile, l1Outcome);
+        com.loan.scorecard.ProductThresholdResolver.ResolvedThresholds thresholds = decision.thresholds();
+        ScorecardResultEnum scorecardResult = decision.decision();
+        BigDecimal approvedAmount = decision.approvedAmount();
+        PricingService.PricingOutcome pricing = decision.pricing();
 
         LoanApplication application = new LoanApplication();
         application.setApplicationId(applicationId);
