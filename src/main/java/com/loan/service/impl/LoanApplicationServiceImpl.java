@@ -81,27 +81,17 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private com.loan.rule.RiskRuleEngine riskRuleEngine;
 
-    @Resource
-    private com.loan.service.RiskRuleService riskRuleService;
 
-    @Resource
-    private com.loan.mapper.RiskRuleHitLogMapper riskRuleHitLogMapper;
 
     /** 阶段 C1：活体结果读取（第一层「信息校验先行」信号装配用） */
-    @Resource
-    private com.loan.mapper.UserFaceLogMapper userFaceLogMapper;
 
     /** 阶段 C5：设备指纹跨账号检索（第一层信号装配用） */
-    @Resource
-    private com.loan.mapper.UserMultiSourceDataMapper userMultiSourceDataMapper;
 
     /** 评分路由服务（第二层口径统一：建档 / 申请 / 重算三处共用同一实现） */
     @Resource
     private com.loan.service.ScorecardRoutingService scorecardRoutingService;
 
     /** 模型注册表（T3：用于算出"落选特征"—— 在多源宽表里但未进入当前默认模型的字段） */
-    @Resource
-    private com.loan.scorecard.ModelRegistry modelRegistry;
 
     /** 精细化定价服务（设计 §2：按评分区间匹配利率档位） */
     @Resource
@@ -112,8 +102,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     private com.loan.metrics.RiskMetrics riskMetrics;
 
     /** 多源档案（供规则上下文使用非传统数据） */
-    @Resource
-    private com.loan.service.MultiSourceService multiSourceService;
 
     @Resource
     private SysUserMapper sysUserMapper;
@@ -127,6 +115,10 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     /** 阶段四 4.3：幂等控制（防连点重复提交） */
     @Resource
     private com.loan.service.IdempotencyService idempotencyService;
+
+    /** 阶段四 4.2：分层规则评估（L1 拦截 / L3 修正）—— 依赖密集（9 个），已独立成类 */
+    @Resource
+    private RuleEvaluationService ruleEvaluationService;
 
 
     /**
@@ -213,7 +205,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         // 设计文档 §2：校验不通过直接拒绝，**不进入后续加工与评分**（与 /risk/decision 的 L1 短路语义对齐）
         // 规则默认 enabled=0 → 无命中 → 不会短路，行为与接入前完全一致
         com.loan.rule.RiskRuleEngine.RuleOutcome l1Outcome =
-                evaluateRiskRulesByLayer(applicationId, userId, "L1", null, applyAmount, userProfile);
+                ruleEvaluationService.evaluate(applicationId, userId, "L1", null, applyAmount, userProfile);
         if (RuleDecisionSupport.isRejectAction(l1Outcome.action())) {
             log.warn("🚫 L1 反欺诈即时拦截，跳过评分卡：申请={}，命中 {} 条",
                     applicationId, l1Outcome.hits().size());
@@ -243,7 +235,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         // ===== 阶段 3-b：L3 策略决策层「后置修正」（输入 = 分 + 标签，不重算信用分）=====
         // 优先级 REJECT > MANUAL > DOWNGRADE > FLAG；规则默认 enabled=0 → 无命中
         com.loan.rule.RiskRuleEngine.RuleOutcome ruleOutcome =
-                evaluateRiskRulesByLayer(applicationId, userId, "L3", scorecardScore, applyAmount, userProfile);
+                ruleEvaluationService.evaluate(applicationId, userId, "L3", scorecardScore, applyAmount, userProfile);
         ScorecardResultEnum beforeRule = scorecardResult;
         scorecardResult = RuleDecisionSupport.mergeRuleDecision(scorecardResult, ruleOutcome.action());
         if (scorecardResult != beforeRule) {
@@ -296,7 +288,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         // 不再"字段缺失即静默放行"：核心多源缺失时，把「自动通过」降为「人工审核」，
         // 由审核员判断属于"用户未授权/未同步多源"还是"真实的低风险客户"。
         // 只降级 AUTO_PASS；AUTO_REJECT 与 MANUAL_REVIEW 不受影响。
-        List<String> missingMultiSources = missingRequiredMultiSources(userId);
+        List<String> missingMultiSources = ruleEvaluationService.missingRequiredMultiSources(userId);
         if (scorecardResult == ScorecardResultEnum.AUTO_PASS && !missingMultiSources.isEmpty()) {
             log.warn("⚠️ 多源数据不足（缺少 {}），自动通过降为转人工：申请={}",
                     missingMultiSources, applicationId);
@@ -969,210 +961,8 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     }
 
 
-    // ==================== 阶段 3：规则层接入申请链路 ====================
-
-    /**
-     * 申请链路的分层规则评估（L1 反欺诈即时拦截 / L3 策略后置修正）
-     *
-     * 上下文 = 评分卡分数 + 申请金额 + 6 个基础特征 + **多源档案（非传统数据）**；
-     * 命中结果写入 risk_rule_hit_log（影子规则也记录，shadow=1）。
-     * **规则默认 enabled=0** → 未启用任何规则时不命中、不改变决策，审批行为与接入前一致。
-     *
-     * @param layer 只评估该层的规则（"L1" 拦截层 / "L3" 修正层）；传 null 表示不限制层
-     * @param score L1 阶段传 null（设计 §2：先验真后算分）；规则条件里缺失字段按"不命中"处理
-     */
-    /**
-     * 1.5：把「算不出来的信号」记为指标 —— 数据采集断了的早期预警。
-     *
-     * <p>每个 {@code xxx_available=0} 表示该维度数据缺失，此时规则侧会把申请转人工
-     * （如 {@code L1-11} 定位缺失、{@code L1-14} 可信度不足）。
-     * 该指标持续升高说明<b>上游采集故障</b>，需要立刻排查 —— 否则风控形同虚设。
-     *
-     * <p><b>只在 L1 层统计</b>：信号只服务第一层；若 L3 层也统计，同一笔申请会被计两次，
-     * 指标数值翻倍失真。
-     */
-    private void recordUnavailableSignals(java.util.Map<String, Object> signals, String layer) {
-        if (!"L1".equalsIgnoreCase(layer)) {
-            return;
-        }
-        recordIfUnavailable(signals, "device_available", "device");
-        recordIfUnavailable(signals, "liveness_available", "liveness");
-        recordIfUnavailable(signals, "geo_available", "geo");
-        recordIfUnavailable(signals, "behavior_available", "behavior");
-    }
-
-    private void recordIfUnavailable(java.util.Map<String, Object> signals,
-                                     String flagKey, String signalName) {
-        Object v = signals == null ? null : signals.get(flagKey);
-        if (v instanceof Number n && n.intValue() == 0) {
-            riskMetrics.signalUnavailable(signalName);
-        }
-    }
-
-    private com.loan.rule.RiskRuleEngine.RuleOutcome evaluateRiskRulesByLayer(
-            String applicationId, String userId, String layer, Integer score,
-            BigDecimal applyAmount, UserProfileDTO userProfile) {
-        try {
-            java.util.Map<String, Object> context = new java.util.LinkedHashMap<>();
-            context.put("score", score);
-            context.put("applyAmount", applyAmount);
-            if (userProfile != null) {
-                context.put("age", userProfile.getAge());
-                context.put("revolving_util", userProfile.getRevolvingUtil());
-                context.put("debt_ratio", userProfile.getDebtRatio());
-                context.put("monthly_income", userProfile.getMonthlyIncome());
-                context.put("credit_lines", userProfile.getCreditLines());
-                context.put("dependents", userProfile.getDependents());
-            }
-            // 非传统数据：多源档案（credit / operator / social / device / location / behavior）
-            java.util.Map<String, Object> multiBlocks = null;
-            try {
-                // 2.2a 请求级缓存：本方法被 L1/L3 各调一次，不加缓存则多源档案要查两遍
-                // （实测一次申请共 5 次 selectByUserId）
-                com.loan.entity.vo.MultiSourceProfileVO profile = com.loan.util.RequestCache.get(
-                        "multiProfile:" + userId,
-                        () -> multiSourceService.getProfile(userId).getData());
-                multiBlocks = profile == null ? null : profile.getDataBlocks();
-                RuleDecisionSupport.flattenInto(context, multiBlocks);
-            } catch (Exception e) {
-                log.warn("⚠️ 规则上下文读取多源档案失败: {}", e.getMessage());
-            }
-
-            // ===== 第一层「信息校验先行」派生信号（纯计算，判读全部交给 L1 规则）=====
-            // 契约见 finance_dev/信息校验先行开发文档.md §4：扁平标量 + available 标志，
-            // 算不出的信号给哨兵值 -1 且仍放入上下文（避免"字段缺失=静默放行"）
-            // 阶段 C5：同设备指纹关联的其它用户数（无指纹则保持 null → 哨兵值）
-            Integer blacklistHitCnt = null;
-            try {
-                Object deviceBlock = multiBlocks == null ? null : multiBlocks.get("device");
-                Object fp = deviceBlock instanceof java.util.Map<?, ?> m
-                        ? m.get("device_fingerprint_hash") : null;
-                if (fp != null) {
-                    blacklistHitCnt = userMultiSourceDataMapper
-                            .countOtherUsersByDeviceFingerprint(userId, String.valueOf(fp));
-                }
-            } catch (Exception e) {
-                log.warn("⚠️ 设备指纹跨账号检索失败: {}", e.getMessage());
-            }
-
-            // 阶段 C1/C2/C5：活体（user_face_log）+ 地址（信用档案）+ 指纹跨账号计数
-            // 2.2a：活体与信用档案走请求级缓存 —— L1/L3 各调一次本方法，否则各查两遍
-            java.util.Map<String, Object> l1Signals = com.loan.rule.L1SignalAssembler
-                    .assemble(multiBlocks,
-                              com.loan.util.RequestCache.get("faceLog:" + userId,
-                                      () -> userFaceLogMapper.selectLatestByUserId(userId)),
-                              com.loan.util.RequestCache.get("creditProfile:" + userId,
-                                      () -> userCreditProfileMapper.selectByUserId(userId)),
-                              blacklistHitCnt);
-            // 1.5：信号缺失埋点 —— 「数据采集断了 = 风控在裸奔」的早期预警（仅 L1 层统计）
-            recordUnavailableSignals(l1Signals, layer);
-            l1Signals.forEach(context::putIfAbsent);
-
-            // ===== T3【特征工程层 §3.2 门禁】落选特征清单 =====
-            // 设计 §3.2：宽表特征过 IV/PSI 门禁 → 入模(L2) / 落选(→ L3 规则修正)。
-            // 现状：门禁只在离线训练侧执行，"落选"体现为"不在 model_config 的 features 里"。
-            // 本处把「在多源宽表里、但未进入当前默认模型的字段」显式暴露给规则上下文，
-            // 供人工在 Web 端配置 L3 规则（对应决策 D-T3 选项 (a)）。
-            try {
-                com.loan.scorecard.model.ScorecardModel defaultModel =
-                        modelRegistry.get(modelRegistry.defaultKey());
-                java.util.Set<String> inModel = new java.util.HashSet<>(
-                        defaultModel == null ? java.util.List.of() : defaultModel.featureNames());
-                java.util.List<String> skipped = new java.util.ArrayList<>();
-                if (multiBlocks != null) {
-                    multiBlocks.forEach((src, block) -> {
-                        if (block instanceof java.util.Map<?, ?> m) {
-                            m.keySet().forEach(k -> {
-                                String f = String.valueOf(k);
-                                if (!"data_version".equals(f) && !inModel.contains(f)) {
-                                    skipped.add(f);
-                                }
-                            });
-                        }
-                    });
-                }
-                context.put("skipped_feature_count", skipped.size());
-                context.put("skipped_features", String.join(",", skipped));
-                if (!skipped.isEmpty()) {
-                    log.info("🚪 落选特征（未入模，可供 L3 规则使用）: {}", skipped);
-                }
-            } catch (Exception e) {
-                log.warn("⚠️ 落选特征计算失败（不影响主流程）: {}", e.getMessage());
-            }
-
-            // 2.2a：规则列表走请求级缓存 —— L1/L3 各调一次本方法，否则全表查两遍
-            List<RiskRule> runnable = com.loan.util.RequestCache.get("riskRules:all",
-                    () -> riskRuleService.list(null)).stream()
-                    .filter(r -> Boolean.TRUE.equals(r.getEnabled()))
-                    // 分层：L1 只跑拦截层、L3 只跑修正层（落实设计 §2 前置拦截 / §6 后置修正的层次语义）
-                    .filter(r -> layer == null || layer.equalsIgnoreCase(r.getLayer()))
-                    .sorted(java.util.Comparator.comparingInt(r -> r.getPriority() == null ? 999 : r.getPriority()))
-                    .toList();
-
-            com.loan.rule.RiskRuleEngine.RuleOutcome outcome = riskRuleEngine.evaluate(runnable, context);
-
-            for (com.loan.rule.RiskRuleEngine.RuleHit hit : outcome.hits()) {
-                // 1.5：规则命中计数（含影子模式）—— 用于判断规则是否该转正、哪条从未命中
-                riskMetrics.ruleHit(hit.ruleCode(), hit.shadow());
-                try {
-                    RiskRuleHitLog hitLog = new RiskRuleHitLog();
-                    hitLog.setApplicationId(applicationId);
-                    hitLog.setUserId(userId);
-                    hitLog.setRuleId(hit.ruleId());
-                    hitLog.setRuleCode(hit.ruleCode());
-                    hitLog.setRuleName(hit.name());
-                    hitLog.setLayer(hit.layer());
-                    hitLog.setAction(hit.action());
-                    hitLog.setShadow(hit.shadow());
-                    riskRuleHitLogMapper.insert(hitLog);
-                } catch (Exception e) {
-                    log.warn("⚠️ 规则命中流水写入失败: rule={}, reason={}", hit.ruleCode(), e.getMessage());
-                }
-            }
-            log.info("🛡 规则评估: 启用 {} 条, 命中 {} 条, 合并动作={}",
-                    runnable.size(), outcome.hits().size(), outcome.action());
-            return outcome;
-        } catch (Exception e) {
-            // 规则层异常绝不影响主流程
-            log.warn("⚠️ 规则评估异常，按无命中处理: {}", e.getMessage());
-            return new com.loan.rule.RiskRuleEngine.RuleOutcome(
-                    java.util.Collections.emptyList(), null, null, "规则评估异常");
-        }
-    }
 
 
-    // ==================== L1 反欺诈即时拦截（设计文档 §2） ====================
-
-    /** 核心多源数据源（强制完备性检查）—— 如需放宽/收紧，只改这一行 */
-    private static final List<String> REQUIRED_MULTI_SOURCES = List.of("credit", "device");
-
-    /**
-     * 检查核心多源数据是否缺失（device + credit）
-     *
-     * 与「字段缺失 = 不命中 = 静默放行」的做法相反：这里把"缺数据"显式暴露出来，
-     * 由调用方降级为人工审核，避免无数据用户被机器静默放过。
-     *
-     * @return 缺失的源名列表；空列表表示核心多源完备
-     */
-    private List<String> missingRequiredMultiSources(String userId) {
-        try {
-            com.loan.entity.vo.MultiSourceProfileVO profile = multiSourceService.getProfile(userId).getData();
-            Map<String, Object> blocks = profile == null ? null : profile.getDataBlocks();
-            if (blocks == null) {
-                return REQUIRED_MULTI_SOURCES;
-            }
-            return REQUIRED_MULTI_SOURCES.stream()
-                    .filter(src -> {
-                        Object block = blocks.get(src);
-                        return !(block instanceof Map<?, ?> m) || m.isEmpty();
-                    })
-                    .toList();
-        } catch (Exception e) {
-            // 取数异常按"缺失"处理：宁可转人工，也不静默放行
-            log.warn("⚠️ 多源完备性检查异常，按缺失处理: {}", e.getMessage());
-            return REQUIRED_MULTI_SOURCES;
-        }
-    }
 
     /**
      * L1 反欺诈即时拦截落档
