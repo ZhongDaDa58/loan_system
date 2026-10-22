@@ -56,4 +56,54 @@ public final class RuleDecisionSupport {
     public static boolean isRejectAction(String action) {
         return action != null && "REJECT".equalsIgnoreCase(action.trim());
     }
+
+    /**
+     * 把规则命中的动作合并进评分卡决策。
+     *
+     * <p>优先级：<b>REJECT &gt; MANUAL/DOWNGRADE &gt; 评分卡原决策</b>；
+     * FLAG 仅记录、不改变决策（返回原决策）。
+     *
+     * <p><b>为什么不返回更强的类型</b>：调用方传入的就是 {@code ScorecardResultEnum}，
+     * 直接返回同类型可以让"归并"这件事串起来（L1 结果 → 评分卡结果 → L3 修正），
+     * 不需要在中间来回转换。
+     *
+     * @param base      评分卡原始决策
+     * @param ruleAction 规则动作（REJECT / MANUAL / DOWNGRADE / FLAG），null 或空表示不改变
+     */
+    public static com.loan.entity.enums.ScorecardResultEnum mergeRuleDecision(
+            com.loan.entity.enums.ScorecardResultEnum base, String ruleAction) {
+        if (ruleAction == null || ruleAction.isBlank()) {
+            return base;
+        }
+        return switch (ruleAction.toUpperCase()) {
+            case "REJECT" -> com.loan.entity.enums.ScorecardResultEnum.AUTO_REJECT;
+            case "MANUAL", "DOWNGRADE" -> com.loan.entity.enums.ScorecardResultEnum.MANUAL_REVIEW;
+            default -> base;
+        };
+    }
+
+    /**
+     * 把多源档案的两层 Map（category → 字段 → 值）扁平化进规则上下文。
+     *
+     * <p>规则引擎的条件按<b>字段名</b>取值（如 {@code device_count}），
+     * 而多源数据是按 category 分块存的（credit / device / behavior …）。
+     * 扁平化后规则就能直接引用内层字段，不用关心它属于哪个分类。
+     */
+    public static void flattenInto(java.util.Map<String, Object> target,
+                                   java.util.Map<String, Object> blocks) {
+        if (blocks == null) {
+            return;
+        }
+        blocks.forEach((category, value) -> {
+            if (value instanceof java.util.Map<?, ?> inner) {
+                inner.forEach((k, v) -> {
+                    if (k != null) {
+                        target.put(String.valueOf(k), v);
+                    }
+                });
+            } else if (value != null) {
+                target.put(category, value);
+            }
+        });
+    }
 }
