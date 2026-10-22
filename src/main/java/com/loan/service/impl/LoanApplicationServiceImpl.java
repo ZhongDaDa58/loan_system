@@ -40,19 +40,10 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     /** 多模型评分（v3/v4/v4-fusion，支持多源特征），用于让多源数据进入申请决策 */
     @Resource
-    private MultiModelScorecardService multiModelScorecardService;
-
-    @Resource
     private LoanProductService loanProductService;
 
     @Resource
-    private AuditService auditService;
-
-    @Resource
     private MonthlyRepaymentMapper monthlyRepaymentMapper;
-
-    @Resource
-    private ScorecardService scorecardService;
 
     @Resource
     private FeatureTransformationService featureTransformationService;
@@ -78,9 +69,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     private UserBankCardMapper userBankCardMapper;
 
     /** 阶段 3：规则引擎接入申请链路（规则默认停用 → 无命中 → 审批行为与接入前一致） */
-    @Resource
-    private com.loan.rule.RiskRuleEngine riskRuleEngine;
-
 
 
     /** 阶段 C1：活体结果读取（第一层「信息校验先行」信号装配用） */
@@ -107,9 +95,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     private SysUserMapper sysUserMapper;
 
     @Resource
-    private UserIdentityMapper userIdentityMapper;
-
-    @Resource
     private UserCreditProfileMapper userCreditProfileMapper;
 
     /** 阶段四 4.3：幂等控制（防连点重复提交） */
@@ -119,6 +104,10 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     /** 阶段四 4.2：分层规则评估（L1 拦截 / L3 修正）—— 依赖密集（9 个），已独立成类 */
     @Resource
     private RuleEvaluationService ruleEvaluationService;
+
+    /** 阶段四 4.2：申请查询（只读职责，与提交流程分离） */
+    @Resource
+    private LoanApplicationQueryService queryService;
 
 
     /**
@@ -678,231 +667,23 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     @Override
     public Result<List<LoanApplicationVO>> queryApplyProgress(String userId) {
-        List<LoanApplicationVO> applicationList = loanApplicationMapper.selectByUserId(userId);
-        // 兜底：已通过但合同未生成的申请（历史数据 / 自动通过早期版本），在用户查看进度时自动补生成
-        if (applicationList != null) {
-            for (LoanApplicationVO vo : applicationList) {
-                repairMissingContract(vo);
-            }
-        }
-        return Result.success(applicationList);
-    }
-
-    /**
-     * 兜底修复：申请已通过但合同草稿缺失时补生成，并回填 VO
-     *
-     * 背景：App 进度页仅在 contractPath 非空且 contractStatus=1 时显示「签署合同」按钮，
-     *       合同缺失会导致用户看不到按钮、无法签约，流程中断。
-     * 该操作幂等：已有合同则直接返回。
-     */
-    private void repairMissingContract(LoanApplicationVO vo) {
-        try {
-            if (vo.getContractPath() != null && !vo.getContractPath().isEmpty()) {
-                return;
-            }
-            if (!ApplicationStatusEnum.APPROVED.getCode().equals(vo.getApplicationStatus())) {
-                return;
-            }
-            Result<String> draft = contractService.generateDraftContract(vo.getApplicationId());
-            if (draft != null && Integer.valueOf(200).equals(draft.getCode())) {
-                LoanApplication latest = loanApplicationMapper.selectByApplicationId(vo.getApplicationId());
-                if (latest != null) {
-                    vo.setContractPath(latest.getContractPath());
-                    vo.setContractStatus(latest.getContractStatus());
-                }
-                log.info("🔧 已补生成缺失的合同草稿: {}", vo.getApplicationId());
-            }
-        } catch (Exception e) {
-            log.warn("⚠️ 补生成合同失败（不影响进度查询）: {} - {}", vo.getApplicationId(), e.getMessage());
-        }
+        // 阶段四 4.2 第 5 步：查询逻辑已移到 LoanApplicationQueryService（只读职责与提交流程分离）
+        return queryService.queryApplyProgress(userId);
     }
 
     @Override
     public Result<LoanApplicationBasicVO> getApplicationBasic(String applicationId) {
-        log.info("🔍 查询申请基本信息: {}", applicationId);
-
-        LoanApplication application = loanApplicationMapper.selectByApplicationId(applicationId);
-        if (application == null) {
-            throw new BusinessException(404, "申请不存在");
-        }
-
-        LoanApplicationBasicVO basicVO = new LoanApplicationBasicVO();
-
-        basicVO.setApplicationId(application.getApplicationId());
-        basicVO.setUserId(application.getUserId());
-        basicVO.setProductId(application.getProductId());
-        basicVO.setApplyAmount(application.getApplyAmount());
-        // S4c：批准金额（规则降额后的最终放款额；未降额时为 null）
-        basicVO.setApprovedAmount(application.getApprovedAmount());
-        basicVO.setApplyTerm(application.getApplyTerm());
-        basicVO.setScorecardScore(application.getScorecardScore());
-        basicVO.setScorecardDecision(application.getScorecardDecision());
-        basicVO.setApplicationStatus(application.getApplicationStatus());
-        basicVO.setStatusDesc(application.getStatusDesc());
-        basicVO.setApplyTime(application.getApplyTime());
-        basicVO.setUpdateTime(application.getUpdateTime());
-        basicVO.setDisbursementCardId(application.getDisbursementCardId());
-
-        LoanProduct product = loanProductService.validateProduct(application.getProductId());
-        if (product != null) {
-            basicVO.setProductName(product.getProductName());
-            basicVO.setInterestRate(product.getInterestRate());
-            basicVO.setRepaymentMethod("等额本息");
-
-            BigDecimal monthlyPayment = calculateMonthlyPayment(
-                    application.getApplyAmount(),
-                    product.getInterestRate(),
-                    application.getApplyTerm()
-            );
-            basicVO.setMonthlyPayment(monthlyPayment);
-        }
-
-        if (application.getDisbursementCardId() != null) {
-            UserBankCard bankCard = userBankCardMapper.selectById(application.getDisbursementCardId());
-            if (bankCard != null) {
-                basicVO.setCardBankName(bankCard.getAliasName());
-                basicVO.setCardNumber(ScorecardDetailAssembler.maskCardNumber(bankCard.getCardNumber()));
-            }
-        }
-
-        return Result.success(basicVO);
+        return queryService.getApplicationBasic(applicationId);
     }
 
     @Override
     public Result<ApplicantIdentityVO> getApplicantIdentity(String applicationId) {
-        log.info("🔍 查询申请人身份信息: {}", applicationId);
-
-        LoanApplication application = loanApplicationMapper.selectByApplicationId(applicationId);
-        if (application == null) {
-            throw new BusinessException(404, "申请不存在");
-        }
-
-        String userId = application.getUserId();
-
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null) {
-            throw new BusinessException(404, "用户不存在");
-        }
-
-        ApplicantIdentityVO identityVO = new ApplicantIdentityVO();
-        UserIdentity userIdentity = userIdentityMapper.selectByUserId(userId);
-
-        identityVO.setUserId(userId);
-        identityVO.setUserPhone(ScorecardDetailAssembler.maskPhone(user.getPhone()));
-        identityVO.setUserRealName(userIdentity.getUserRealName());
-        identityVO.setUserName(user.getRealName());
-        identityVO.setKycStatus(user.getKycStatus());
-        identityVO.setKycStatusDesc(ScorecardDetailAssembler.getKycStatusDesc(user.getKycStatus()));
-        identityVO.setRegisterTime(user.getCreateTime());
-        identityVO.setLastLoginTime(user.getUpdateTime());
-
-
-        if (userIdentity != null) {
-            identityVO.setIdCardNumber(ScorecardDetailAssembler.maskIdCard(userIdentity.getIdCardNumber()));
-            identityVO.setVerifyStatus(userIdentity.getVerifyStatus());
-            identityVO.setVerifyStatusDesc(ScorecardDetailAssembler.getVerifyStatusDesc(userIdentity.getVerifyStatus()));
-            identityVO.setIdCardFrontUrl(userIdentity.getIdCardFrontUrl());
-            identityVO.setFaceCaptureUrl(userIdentity.getFaceCaptureUrl());
-            identityVO.setVerifyTime(userIdentity.getUpdateTime());
-
-                   } else {
-            identityVO.setVerifyStatus(0);
-            identityVO.setVerifyStatusDesc("未验证");
-        }
-
-        return Result.success(identityVO);
+        return queryService.getApplicantIdentity(applicationId);
     }
+
     @Override
     public Result<ScorecardDetailVO> getScorecardDetail(String applicationId) {
-        log.info("🔍 查询评分卡结果详情: {}", applicationId);
-
-        LoanApplication application = loanApplicationMapper.selectByApplicationId(applicationId);
-        if (application == null) {
-            throw new BusinessException(404, "申请不存在");
-        }
-
-        RiskDecisionLog riskLog = riskDecisionLogService.getByApplicationId(applicationId);
-        if (riskLog == null || riskLog.getFeatureDetails() == null) {
-            throw new BusinessException(404, "评分卡详情数据不存在");
-        }
-
-        ScorecardDetailVO detailVO = new ScorecardDetailVO();
-
-        detailVO.setTotalScore(application.getScorecardScore());
-        detailVO.setDecision(application.getScorecardDecision());
-        detailVO.setDecisionDesc(ScorecardDetailAssembler.getDecisionDesc(application.getScorecardDecision()));
-        detailVO.setScoreLevel(ScorecardDetailAssembler.getScoreLevel(application.getScorecardScore()));
-
-        try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            java.util.Map<String, Object> featureDetails = mapper.readValue(
-                    riskLog.getFeatureDetails(),
-                    new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String, Object>>() {}
-            );
-
-            detailVO.setBaseScore(ScorecardDetailAssembler.calculateBaseScore());
-
-            // Coerce parsed JSON values to expected numeric types to avoid ClassCastException
-            Object revolObj = featureDetails.get("revolvingUtil");
-            BigDecimal revolVal = ScorecardDetailAssembler.toBigDecimal(revolObj);
-            detailVO.setRevolvingUtil(ScorecardDetailAssembler.buildFeatureScore(
-                    "revolvingUtil", "循环信用利用率",
-                    revolVal,
-                    ScorecardDetailAssembler.getRevolvingUtilLevel(revolVal),
-                    ScorecardDetailAssembler.getRevolvingUtilDesc(revolVal)
-            ));
-
-            Object ageObj = featureDetails.get("age");
-            Integer ageVal = ScorecardDetailAssembler.toInteger(ageObj);
-            detailVO.setAge(ScorecardDetailAssembler.buildFeatureScore(
-                    "age", "年龄",
-                    ageVal,
-                    ScorecardDetailAssembler.getAgeLevel(ageVal),
-                    ScorecardDetailAssembler.getAgeDesc(ageVal)
-            ));
-
-            Object debtObj = featureDetails.get("debtRatio");
-            BigDecimal debtVal = ScorecardDetailAssembler.toBigDecimal(debtObj);
-            detailVO.setDebtRatio(ScorecardDetailAssembler.buildFeatureScore(
-                    "debtRatio", "负债率",
-                    debtVal,
-                    ScorecardDetailAssembler.getDebtRatioLevel(debtVal),
-                    ScorecardDetailAssembler.getDebtRatioDesc(debtVal)
-            ));
-
-            Object incomeObj = featureDetails.get("monthlyIncome");
-            BigDecimal incomeVal = ScorecardDetailAssembler.toBigDecimal(incomeObj);
-            detailVO.setMonthlyIncome(ScorecardDetailAssembler.buildFeatureScore(
-                    "monthlyIncome", "月收入",
-                    incomeVal,
-                    ScorecardDetailAssembler.getIncomeLevel(incomeVal),
-                    ScorecardDetailAssembler.getIncomeDesc(incomeVal)
-            ));
-
-            Object creditLinesObj = featureDetails.get("creditLines");
-            Integer creditLinesVal = ScorecardDetailAssembler.toInteger(creditLinesObj);
-            detailVO.setCreditLines(ScorecardDetailAssembler.buildFeatureScore(
-                    "creditLines", "信贷账户数",
-                    creditLinesVal,
-                    ScorecardDetailAssembler.getCreditLinesLevel(creditLinesVal),
-                    ScorecardDetailAssembler.getCreditLinesDesc(creditLinesVal)
-            ));
-
-            Object dependentsObj = featureDetails.get("dependents");
-            Integer dependentsVal = ScorecardDetailAssembler.toInteger(dependentsObj);
-            detailVO.setDependents(ScorecardDetailAssembler.buildFeatureScore(
-                    "dependents", "家属数量",
-                    dependentsVal,
-                    ScorecardDetailAssembler.getDependentsLevel(dependentsVal),
-                    ScorecardDetailAssembler.getDependentsDesc(dependentsVal)
-            ));
-
-        } catch (Exception e) {
-            log.error("解析评分卡详情失败", e);
-            throw new BusinessException(500, "评分卡详情解析失败");
-        }
-
-        return Result.success(detailVO);
+        return queryService.getScorecardDetail(applicationId);
     }
 
     /**
@@ -941,23 +722,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         details.put("revolvingUtil", profile.getRevolvingUtil());
         details.put("creditLines", profile.getCreditLines());
         return details;
-    }
-    private BigDecimal calculateMonthlyPayment(BigDecimal principal, BigDecimal annualRate, Integer termMonths) {
-        if (principal == null || annualRate == null || termMonths == null || termMonths <= 0) {
-            return BigDecimal.ZERO;
-        }
-
-        BigDecimal monthlyRate = annualRate.divide(new BigDecimal("12"), 10, java.math.RoundingMode.HALF_UP);
-
-        if (monthlyRate.compareTo(BigDecimal.ZERO) == 0) {
-            return principal.divide(new BigDecimal(termMonths), 2, java.math.RoundingMode.HALF_UP);
-        }
-
-        BigDecimal factor = BigDecimal.ONE.add(monthlyRate).pow(termMonths);
-        BigDecimal numerator = monthlyRate.multiply(factor);
-        BigDecimal denominator = factor.subtract(BigDecimal.ONE);
-
-        return principal.multiply(numerator).divide(denominator, 2, java.math.RoundingMode.HALF_UP);
     }
 
 
