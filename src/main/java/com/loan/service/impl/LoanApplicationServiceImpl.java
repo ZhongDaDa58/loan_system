@@ -38,15 +38,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private LoanApplicationMapper loanApplicationMapper;
 
-    @Resource
-    private FeatureTransformationService featureTransformationService;
-
-    @Resource
-    private RiskDecisionLogService riskDecisionLogService;
-
-    @Resource
-    private CreditScoreSyncService creditScoreSyncService;
-
     /** 阶段 3：规则引擎接入申请链路（规则默认停用 → 无命中 → 审批行为与接入前一致） */
 
 
@@ -59,10 +50,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     private com.loan.service.ScorecardRoutingService scorecardRoutingService;
 
     /** 模型注册表（T3：用于算出"落选特征"—— 在多源宽表里但未进入当前默认模型的字段） */
-
-    /** 业务指标（阶段一 1.5：把风控决策翻译成 Prometheus 指标） */
-    @Resource
-    private com.loan.metrics.RiskMetrics riskMetrics;
 
     /** 多源档案（供规则上下文使用非传统数据） */
 
@@ -86,13 +73,13 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private LoanApplicationQueryService queryService;
 
-    /** 阶段四 4.2：合同草稿静默生成（两条链路共用） */
-    @Resource
-    private ContractDraftService contractDraftService;
-
     /** 阶段四 4.2：完整信息链路的申请提交 */
     @Resource
     private BasicInfoApplyService basicInfoApplyService;
+
+    /** 阶段四 4.2：申请单落库与留痕（建单 / 埋点 / risk_decision_log / L1 短路落档） */
+    @Resource
+    private ApplicationPersistService persistService;
 
 
     /**
@@ -147,7 +134,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         if (RuleDecisionSupport.isRejectAction(l1Outcome.action())) {
             log.warn("🚫 L1 反欺诈即时拦截，跳过评分卡：申请={}，命中 {} 条",
                     applicationId, l1Outcome.hits().size());
-            return persistL1RejectedApplication(applicationId, userId, applyDTO, applyAmount,
+            return persistService.persistL1Rejected(applicationId, userId, applyDTO, applyAmount,
                     applyTerm, disbursementCardId, creditProfile, l1Outcome);
         }
 
@@ -169,120 +156,11 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         BigDecimal approvedAmount = decision.approvedAmount();
         PricingService.PricingOutcome pricing = decision.pricing();
 
-        LoanApplication application = new LoanApplication();
-        application.setApplicationId(applicationId);
-        application.setUserId(userId);
-        application.setProductId(applyDTO.getProductId());
-        application.setApplyAmount(applyAmount);
-        application.setApprovedAmount(approvedAmount);   // P-025：null = 未降额
-        application.setAppliedRate(pricing.annualRate()); // 精细化定价：null = 未定价
-        application.setPricingTier(pricing.tierLabel());
-        // 阶段四 4.3 第 ③ 层：把幂等键落库，与 user_id 组成唯一索引 uk_user_idem 兜底
-        // （Redis 不可用/被绕过时，这里仍能挡住同一用户的重复提交；null 不参与唯一约束）
-        application.setIdempotencyKey(idemKey);
-        application.setApplyTerm(applyTerm);
-        application.setCreditScore(scorecardScore);
-        application.setScorecardScore(scorecardScore);
-        application.setDisbursementCardId(disbursementCardId);
-
-        String decisionCode = ScorecardDetailAssembler.mapScorecardResultToDecisionCode(scorecardResult);
-        application.setScorecardDecision(decisionCode);
-
-        // ===== 1.5 业务指标埋点 =====
-        // 位置很关键：此处「规则归并 + 降额 + 定价 + 多源完备性」均已完成，
-        // 是「决策最终确定」的那一刻。若前移到评分之后，统计会把 AUTO_PASS 多算、
-        // REJECT 漏算（数字看起来正常，实际是错的）。
-        riskMetrics.decision(decisionCode);
-        if (approvedAmount != null && approvedAmount.compareTo(applyAmount) < 0) {
-            riskMetrics.downgrade();          // 规则降额实际生效
-        }
-        if (pricing != null && pricing.matched()) {
-            riskMetrics.pricingTier(pricing.tierLabel());
-        }
-        // 评分分布与特征缺失（用于漂移检测 / 模型质量评估）
-        if (scorecardScore != null && scoreOutcome != null) {
-            riskMetrics.score(scoreOutcome.modelKey(), scorecardScore);
-            if (scoreOutcome.missingFeatures() != null) {
-                riskMetrics.missingFeatures(scoreOutcome.modelKey(), scoreOutcome.missingFeatures());
-            }
-        }
-
-        switch (scorecardResult) {
-            case AUTO_PASS:
-                application.setApplicationStatus(ApplicationStatusEnum.APPROVED.getCode());
-                log.info("✅ 自动通过");
-                break;
-            case MANUAL_REVIEW:
-                application.setApplicationStatus(ApplicationStatusEnum.PENDING.getCode());
-                log.info("⚠️ 转人工审核");
-                break;
-            case AUTO_REJECT:
-                application.setApplicationStatus(ApplicationStatusEnum.REJECTED.getCode());
-                log.info("❌ 自动拒绝");
-                break;
-        }
-
-        application.setApplyTime(new Date());
-
-        int rows = loanApplicationMapper.insert(application);
-        if (rows != 1) {
-            throw new BusinessException(500, "申请提交失败，请重试");
-        }
-
-        log.info("💾 贷款申请保存成功，申请ID: {}", application.getApplicationId());
-
-        FeatureTransformationResultDTO transformationResult = FeatureTransformationResultDTO.success(
-                userProfile,
-                ScorecardDetailAssembler.buildTransformationDetails(userProfile)
-        );
-
-        RiskDecisionLog riskLog = riskDecisionLogService.buildLogFromTransformation(
-                application.getApplicationId(),
-                userId,
-                scorecardScore,
-                decisionCode,
-                transformationResult,
-                null,
-                null
-        );
-        // ===== P-044 修复：补「特征快照」 =====
-        // 此前 feature_snapshot **从未被赋值** → 恒为 NULL，导致：
-        //   ① 审批详情页「特征贡献分层」卡片拿不到数据；
-        //   ② approval-summary 的 featureSnapshot 为空；
-        //   ③ S1 导出「特征 + Y 标签」样本时无特征可导。
-        // 此处落「实际装配的特征」（含多源，与评分卡入参一致）。
-        try {
-            riskLog.setFeatureSnapshot(new ObjectMapper().writeValueAsString(
-                    featureTransformationService.buildMultiSourceFeatures(userId)));
-        } catch (Exception e) {
-            log.warn("⚠️ 特征快照落库失败（不影响主流程）: {}", e.getMessage());
-        }
-        // 阶段 2：记录本次生效的产品阈值与来源（阈值分化可追溯）
-        riskLog.setProductId(product.getProductId());
-        riskLog.setAppliedAutoPass(thresholds.autoPassScore());
-        riskLog.setAppliedManualReview(thresholds.manualReviewScore());
-        riskLog.setThresholdSource(thresholds.source());
-        // 记录实际使用的评分模型（v3 单模型 / v4 多源多模型），便于分数追溯
-        riskLog.setModelVersion(scoreOutcome.modelKey());
-        riskDecisionLogService.logDecision(riskLog);
-
-        creditScoreSyncService.syncScorecardToCreditScore(userId, scorecardScore, application.getApplicationId());
-
-        // 自动通过：与人工审批保持一致，自动生成合同草稿（失败不阻断申请）
-        if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
-            contractDraftService.generateQuietly(application.getApplicationId());
-        }
-
-        String message;
-        if (scorecardResult == ScorecardResultEnum.AUTO_PASS) {
-            message = String.format("评分卡自动通过（得分：%d），申请已批准", scorecardScore);
-        } else if (scorecardResult == ScorecardResultEnum.MANUAL_REVIEW) {
-            message = String.format("申请提交成功（得分：%d），等待人工审核", scorecardScore);
-        } else {
-            message = String.format("评分卡评估未通过（得分：%d），申请已被拒绝", scorecardScore);
-        }
-
-        return Result.success(message);
+        // 阶段四 4.2：建单 + 埋点 + 留痕 + 副作用已移到 ApplicationPersistService
+        // （插单 / 决策分布埋点 / risk_decision_log 含特征快照 / 信用分同步 / 合同预生成）
+        return persistService.persist(new ApplicationPersistService.PersistRequest(
+                applicationId, userId, applyDTO.getProductId(), applyAmount, applyTerm,
+                disbursementCardId, idemKey, scorecardScore, scoreOutcome, decision, userProfile));
     }
 
     @Override
@@ -311,50 +189,5 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Override
     public Result<ScorecardDetailVO> getScorecardDetail(String applicationId) {
         return queryService.getScorecardDetail(applicationId);
-    }
-
-
-
-
-
-
-    /**
-     * L1 反欺诈即时拦截落档
-     *
-     * 设计文档 §2：第一层校验不通过**直接拒绝，不进入后续加工与评分**。
-     * 与全局决策入口语义对齐（RiskDecisionServiceImpl 同样在评分前拦截 L1）：
-     * - **不调用评分卡** → `scorecard_score` 留空，表示"本次未评分"
-     * - `credit_score` 为 NOT NULL → 沿用信用档案里的分数
-     * - 不生成合同草稿、不同步信用分
-     * - 规则命中明细已写入 `risk_rule_hit_log`，足以追溯
-     *   （不写 `risk_decision_log`：该表语义是"评分卡决策留痕"，此处无评分卡决策）
-     */
-    private Result<?> persistL1RejectedApplication(
-            String applicationId, String userId, LoanApplyDTO applyDTO, BigDecimal applyAmount,
-            Integer applyTerm, Long disbursementCardId, UserCreditProfile creditProfile,
-            com.loan.rule.RiskRuleEngine.RuleOutcome l1Outcome) {
-
-        LoanApplication application = new LoanApplication();
-        application.setApplicationId(applicationId);
-        application.setUserId(userId);
-        application.setProductId(applyDTO.getProductId());
-        application.setApplyAmount(applyAmount);
-        application.setApplyTerm(applyTerm);
-        application.setCreditScore(creditProfile.getCreditScore());   // NOT NULL：沿用档案分
-        application.setScorecardScore(null);                           // L1 已拦截，未进入评分
-        application.setDisbursementCardId(disbursementCardId);
-        application.setScorecardDecision(ScorecardDetailAssembler.mapScorecardResultToDecisionCode(ScorecardResultEnum.AUTO_REJECT));
-        application.setApplicationStatus(ApplicationStatusEnum.REJECTED.getCode());
-        application.setApplyTime(new Date());
-        loanApplicationMapper.insert(application);
-        log.info("💾 L1 拦截申请已留档（未评分），申请ID: {}", applicationId);
-
-        String ruleNames = l1Outcome.hits().stream()
-                .map(com.loan.rule.RiskRuleEngine.RuleHit::name)
-                .filter(java.util.Objects::nonNull)
-                .distinct()
-                .collect(java.util.stream.Collectors.joining("、"));
-        return Result.error(403, "很抱歉，您的申请未通过反欺诈校验"
-                + (ruleNames.isBlank() ? "" : "（" + ruleNames + "）") + "，已被即时拦截");
     }
 }
