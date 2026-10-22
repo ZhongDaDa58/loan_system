@@ -39,6 +39,10 @@ public class MultiModelScorecardController {
     @Resource
     private ScoreMetrics scoreMetrics;
 
+    /** 模型质量评估（模型配置页：IV / PSI / 使用量） */
+    @Resource
+    private com.loan.scorecard.ModelQualityService modelQualityService;
+
     @PostMapping("/calculate")
     @Operation(summary = "多模型评分", description = "按指定版本（或默认版本）评分；请求版本不可用时自动降级，支持多源特征")
     public Result<?> calculate(@Valid @RequestBody MultiModelScoreRequest request) {
@@ -93,5 +97,23 @@ public class MultiModelScorecardController {
             description = "按申请 ID 聚合决策留痕（模型版本/分数/决策/特征贡献/特征快照）+ 多源脱敏摘要；W5-B2，供 Web 审批详情页")
     public Result<?> approvalSummary(@RequestParam("applicationId") String applicationId) {
         return Result.success(multiModelScorecardService.approvalSummary(applicationId));
+    }
+
+    @GetMapping("/quality/overview")
+    @Operation(summary = "模型质量总览（模型配置页）",
+            description = "模型清单 + 默认模型 + 调用量/决策分布 + IV 汇总 + PSI（近 30 天 vs 30 天前）")
+    public Result<?> qualityOverview() {
+        return Result.success(modelQualityService.overview());
+    }
+
+    @GetMapping("/quality/{modelKey}/features")
+    @Operation(summary = "模型特征级质量",
+            description = "逐特征 IV / 分箱数 / 来源 / 系数（供模型配置页下钻查看）")
+    public Result<?> modelFeatureQuality(@PathVariable("modelKey") String modelKey) {
+        var quality = modelQualityService.featureQuality(modelKey);
+        if (quality == null) {
+            return Result.error(404, "模型不存在: " + modelKey);
+        }
+        return Result.success(quality);
     }
 }

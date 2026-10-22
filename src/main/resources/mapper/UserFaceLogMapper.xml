@@ -5,4 +5,12 @@
         INSERT INTO user_face_log (user_id, face_image_url, similarity_score, is_live, result)
         VALUES (#{userId}, #{faceImageUrl}, #{similarityScore}, #{isLive}, #{result})
     </insert>
+
+    <select id="selectLatestByUserId" resultType="com.loan.entity.UserFaceLog">
+        SELECT id, user_id, face_image_url, similarity_score, is_live, result
+        FROM user_face_log
+        WHERE user_id = #{userId}
+        ORDER BY id DESC
+        LIMIT 1
+    </select>
 </mapper>

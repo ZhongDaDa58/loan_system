@@ -77,8 +77,21 @@ public class MultiSourceIngestServiceImpl implements MultiSourceIngestService {
 
         // App 端行为埋点（客户端直接上报）：白名单里只放"派生后的特征名"
         ALLOWED_FIELDS.put(SourceTypeEnum.BEHAVIOR.getCode(), List.of(
-                "behavior_anomaly_score"));
+                "behavior_anomaly_score",
+                // ===== 阶段 C6：原始埋点落库，供审计与复盘 =====
+                // 原先算完 behavior_anomaly_score 即丢弃，事后无法核查"为什么判异常"
+                "form_fill_ms", "field_count", "field_order_anomaly"));
         RANGE_RULES.put("behavior_anomaly_score", new double[]{0, 1});
+        RANGE_RULES.put("form_fill_ms", new double[]{0, 3600000});
+        RANGE_RULES.put("field_count", new double[]{0, 200});
+        RANGE_RULES.put("field_order_anomaly", new double[]{0, 10000});
+
+        // ===== 阶段 C3：位置数据落库 =====
+        // 仅用于第一层交叉验证（地址 vs 定位）与规则上下文，**不进模型特征**（§3.5 红线）
+        ALLOWED_FIELDS.put(SourceTypeEnum.LOCATION.getCode(), List.of(
+                "latitude", "longitude"));
+        RANGE_RULES.put("latitude", new double[]{-90, 90});
+        RANGE_RULES.put("longitude", new double[]{-180, 180});
     }
 
     @Resource
@@ -148,7 +161,23 @@ public class MultiSourceIngestServiceImpl implements MultiSourceIngestService {
             return features;
         }
 
+        // 【T2 修复】同源只保留"最新一条 SUCCESS"记录。
+        // 现状：records 是该用户全部历史行（ORDER BY source_type, fetched_at DESC），
+        //       原实现逐条 put → 同源多行时后读到的（更旧的）会覆盖更新的，且不过滤 STALE。
+        // 修复：依赖 SQL 的 fetched_at DESC 排序，同源首次出现即最新；并跳过非 SUCCESS 行。
+        Map<String, UserMultiSourceData> latestBySource = new LinkedHashMap<>();
         for (UserMultiSourceData record : records) {
+            String src = record.getSourceType();
+            if (src == null || latestBySource.containsKey(src)) {
+                continue;   // 已有更新的一行
+            }
+            if (record.getFetchStatus() != null && !"SUCCESS".equalsIgnoreCase(record.getFetchStatus())) {
+                continue;   // 跳过 STALE / FAILED
+            }
+            latestBySource.put(src, record);
+        }
+
+        for (UserMultiSourceData record : latestBySource.values()) {
             try {
                 Map<String, Object> payload = OBJECT_MAPPER.readValue(record.getDataJson(), Map.class);
                 Map<String, Object> sourceMeta = new LinkedHashMap<>();
@@ -205,7 +234,9 @@ public class MultiSourceIngestServiceImpl implements MultiSourceIngestService {
      * 处理规则：
      *  - eventType = device   → source_type=device，保留白名单字段并派生 device_first_seen_months；
      *  - eventType = behavior → source_type=behavior，派生 behavior_anomaly_score；
-     *  - 其他（如 location）  → 暂不作为特征，计入 skipped（位置类特征待后续扩展）。
+     *  - eventType = location → source_type=location，保留 latitude/longitude（阶段 C3 新增：
+     *    仅用于第一层交叉验证与规则上下文，**不作为模型入模特征**，见设计文档 §3.5 红线）；
+     *  - 其他                  → 计入 skipped。
      * 落库前统一走 {@link #clean} 白名单过滤与区间截断，避免原始字段污染特征空间。
      */
     @Override
@@ -232,6 +263,11 @@ public class MultiSourceIngestServiceImpl implements MultiSourceIngestService {
                                 SourceTypeEnum.BEHAVIOR.getCode(), k -> new LinkedHashMap<>());
                         raw.putAll(data);
                         raw.put("behavior_anomaly_score", behaviorAnomalyScore(data));
+                    } else if ("location".equals(type)) {
+                        // 阶段 C3：位置数据落库（仅用于第一层交叉验证，不进模型特征）
+                        Map<String, Object> raw = bySource.computeIfAbsent(
+                                SourceTypeEnum.LOCATION.getCode(), k -> new LinkedHashMap<>());
+                        raw.putAll(data);
                     } else {
                         skipped++;
                     }
@@ -346,16 +382,33 @@ public class MultiSourceIngestServiceImpl implements MultiSourceIngestService {
      * 落库（存在则更新，否则新增）
      */
     private void upsert(String userId, String sourceType, Map<String, Object> cleaned) {
-        String json;
-        try {
-            json = OBJECT_MAPPER.writeValueAsString(cleaned);
-        } catch (Exception e) {
-            throw new IllegalStateException("多源数据序列化失败: " + e.getMessage(), e);
-        }
-
         Date now = new Date();
         UserMultiSourceData existing =
                 multiSourceDataMapper.selectLatestByUserIdAndSourceType(userId, sourceType);
+
+        // ===== 阶段 C7：字段级合并（而非整体替换 data_json）—— 修缺口 G9 =====
+        // 背景：App 上报 device 事件时，原先会用"清洗后的部分字段"整体覆盖 data_json，
+        //       把 Provider（MockDeviceProvider）生成的 device_blacklist_hit_now /
+        //       device_related_app_cnt_30d 等字段一并冲掉，导致 L1-02 / L1-03 失效。
+        // 策略：以已有 data_json 为底，用本次 cleaned **逐字段覆盖**（新值优先），其余字段保留。
+        Map<String, Object> merged = new LinkedHashMap<>();
+        if (existing != null && existing.getDataJson() != null) {
+            try {
+                merged.putAll(OBJECT_MAPPER.readValue(existing.getDataJson(),
+                        new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                        }));
+            } catch (Exception e) {
+                log.warn("⚠️ 既有 data_json 解析失败，按整体覆盖处理: {}", e.getMessage());
+            }
+        }
+        merged.putAll(cleaned);
+
+        String json;
+        try {
+            json = OBJECT_MAPPER.writeValueAsString(merged);
+        } catch (Exception e) {
+            throw new IllegalStateException("多源数据序列化失败: " + e.getMessage(), e);
+        }
 
         if (existing == null) {
             UserMultiSourceData record = new UserMultiSourceData();

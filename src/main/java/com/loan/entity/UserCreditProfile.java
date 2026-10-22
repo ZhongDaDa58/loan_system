@@ -20,6 +20,12 @@ public class UserCreditProfile {
     private String education;
     private String occupation;
 
+    // ===== 阶段 C2：地址（第一层交叉验证用，可选填，不进模型特征）=====
+    /** 家庭/居住地址 */
+    private String homeAddress;
+    /** 单位地址 */
+    private String companyAddress;
+
     // 家庭信息（JSON）
     private String familyInfo;
 

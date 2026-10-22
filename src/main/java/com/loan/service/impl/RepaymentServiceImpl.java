@@ -88,8 +88,8 @@ public class RepaymentServiceImpl implements RepaymentService {
         }
 
         if (!monthlyRepayment.getRepaymentAmount().equals(submitAmount)) {
-            System.out.println("submitAmount: " + submitAmount);
-            System.out.println("monthlyRepayment.getRepaymentAmount(): " + monthlyRepayment.getRepaymentAmount());
+            // 保留实际值便于排查（原为两行无意义调试打印）
+            log.warn("还款金额不一致 submitAmount={} expectedAmount={}", submitAmount, monthlyRepayment.getRepaymentAmount());
             throw new BusinessException(400, "还款金额不一致");
         }
 

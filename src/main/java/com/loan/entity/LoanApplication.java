@@ -32,6 +32,32 @@ public class LoanApplication {
     private BigDecimal applyAmount;
 
     /**
+     * 批准金额（P-025：规则 DOWNGRADE 降额后的最终放款额）
+     * null = 未降额，放款/合同按 apply_amount
+     */
+    private BigDecimal approvedAmount;
+
+    /**
+     * 实际执行年化利率（精细化定价，设计 §2）
+     * null = 未命中定价档位，回退产品自带利率
+     */
+    private BigDecimal appliedRate;
+
+    /** 命中的定价档位标签（A/B/C…） */
+    private String pricingTier;
+
+    /**
+     * 幂等键（阶段四 4.3）—— 来自请求头 {@code Idempotency-Key}。
+     *
+     * <p>与 {@code user_id} 组成唯一索引 {@code uk_user_idem}：
+     * Redis 层被绕过或不可用时，这里仍能挡住"同一用户用同一 key 重复提交"。
+     *
+     * <p>{@code null} 表示客户端未提供该头（老版本 App）—— MySQL 唯一索引允许多个 NULL，
+     * 因此这类记录不参与唯一性约束，不影响现有功能。
+     */
+    private String idempotencyKey;
+
+    /**
      * 申请期限（月）
      */
     private Integer applyTerm;

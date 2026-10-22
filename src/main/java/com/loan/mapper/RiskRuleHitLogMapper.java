@@ -29,4 +29,7 @@ public interface RiskRuleHitLogMapper {
 
     /** 最近命中记录 */
     List<RiskRuleHitLog> selectRecent(@Param("limit") Integer limit);
+
+    /** 某笔申请的命中记录（审批详情页用） */
+    List<RiskRuleHitLog> selectByApplicationId(@Param("applicationId") String applicationId);
 }

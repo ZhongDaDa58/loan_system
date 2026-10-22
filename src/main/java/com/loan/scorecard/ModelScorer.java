@@ -55,17 +55,27 @@ public class ModelScorer {
 
         for (String feature : model.featureNames()) {
             Object raw = safeFeatures.get(feature);
-            if (raw == null) {
-                missing.add(feature);
-                featureScores.put(feature, 0.0);
-                continue;
-            }
-            Double value = toDouble(raw);
+            Double value = raw == null ? null : toDouble(raw);
+
             if (value == null) {
+                // 【训练/在线口径一致】缺失时优先采用模型配置里的 fill_value（训练集中位数）。
+                // 原实现在此直接记 0 分，而离线打分（scorecard_core.py）用的是 fill_value，
+                // 导致同一份数据线上线下结果不同：例如 v4 的 revolving_util 缺失时
+                // 在线 0 分 vs 训练口径约 +21.8 分，15 个多源特征全缺时约低估 19 分。
+                Object fv = null;
+                Object fc = model.getFeatures() == null ? null : model.getFeatures().get(feature);
+                if (fc instanceof Map<?, ?> fm) {
+                    fv = fm.get("fill_value");
+                }
                 missing.add(feature);
-                featureScores.put(feature, 0.0);
-                continue;
+                Double fill = fv == null ? null : toDouble(fv);
+                if (fill == null) {
+                    featureScores.put(feature, 0.0);   // 无 fill_value 时保持原行为
+                    continue;
+                }
+                value = fill;
             }
+
             double score = featureScore(model, feature, value);
             featureScores.put(feature, score);
             sum += score;

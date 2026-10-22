@@ -24,6 +24,39 @@ public class RiskRuleController {
     @Resource
     private RiskRuleService riskRuleService;
 
+    /** 规则命中流水（审批详情页：查询某笔申请命中的规则） */
+    @Resource
+    private com.loan.mapper.RiskRuleHitLogMapper riskRuleHitLogMapper;
+
+    @GetMapping("/hits/{applicationId}")
+    @Operation(summary = "规则命中查询",
+            description = "某笔申请的规则命中明细 + 本次评估的启用规则数（审批详情页：回答“是否触及规则”）")
+    public Result<?> hits(@PathVariable("applicationId") String applicationId) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("applicationId", applicationId);
+
+        java.util.List<com.loan.entity.RiskRuleHitLog> hitList =
+                riskRuleHitLogMapper.selectByApplicationId(applicationId);
+        data.put("hits", hitList);
+        data.put("hitCount", hitList.size());
+
+        java.util.List<com.loan.entity.RiskRule> enabled = riskRuleService.list(null).stream()
+                .filter(r -> Boolean.TRUE.equals(r.getEnabled()))
+                .toList();
+        data.put("evaluated", true);
+        data.put("enabledRuleCount", enabled.size());
+        data.put("enabledRules", enabled.stream().map(r -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("ruleCode", r.getRuleCode());
+            m.put("name", r.getName());
+            m.put("layer", r.getLayer());
+            m.put("action", r.getAction());
+            m.put("shadowMode", r.getShadowMode());
+            return m;
+        }).toList());
+        return Result.success(data);
+    }
+
     @GetMapping
     @Operation(summary = "规则列表", description = "可按分类过滤；按优先级升序返回")
     public Result<?> list(@RequestParam(value = "category", required = false) String category) {

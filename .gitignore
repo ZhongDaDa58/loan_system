@@ -2,6 +2,13 @@ HELP.md
 target/
 developnment/
 contract/
+# ⚠️ 不要写 `docker/` —— 会把 Dockerfile / docker-compose.yml / .dockerignore 一起忽略掉，
+#    新克隆的仓库就无法构建镜像。只忽略"含真实数据的初始化脚本"。
+docker/mysql-init/
+# 手工执行的 DDL 脚本（数据修复/一次性操作），已由 src/main/resources/db/migration 的 Flyway 迁移取代
+# ⚠️ 必须带前导 `/`：写成 `db/` 会匹配任意层级的 db 目录，
+#    把 src/main/resources/db/migration 的 Flyway 迁移也一起忽略掉。
+/db/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -37,3 +44,4 @@ build/
 ### 运行时产物（测试/演示生成，不入库）###
 contracts/
 uploads/
+logs/

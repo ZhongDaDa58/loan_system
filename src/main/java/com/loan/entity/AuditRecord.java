@@ -40,4 +40,15 @@ public class AuditRecord {
      * 审核时间（提交审核结果时自动生成）
      */
     private Date auditTime;
+
+    // ===== S1：Y 标签字段（人工结论回流训练库，设计 §8）=====
+
+    /** 人工判定的最终标签：1=欺诈 / 0=正常 / null=未标注 */
+    private Integer finalLabel;
+
+    /** 欺诈类型标签（如 资料伪造 / 团伙欺诈 / 中介代办），可空 */
+    private String fraudTag;
+
+    /** 结构化拒绝原因（与 auditOpinion 自由文本并存），可空 */
+    private String rejectReason;
 }

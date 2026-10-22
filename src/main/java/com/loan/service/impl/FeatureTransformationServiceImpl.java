@@ -211,7 +211,12 @@ public class FeatureTransformationServiceImpl implements FeatureTransformationSe
             if (profile != null) {
                 putIfNotNull(features, "revolving_util", profile.getRevolvingUtil());
                 putIfNotNull(features, "age", profile.getAge());
+                // S5 修正：模型特征名是 debt_to_income（v4 的 21 特征 + 多源 credit 块同名），
+                // 而档案字段叫 debtRatio —— 原实现喂的键名是 debt_ratio，导致**模型判该特征缺失**。
+                // 两个键都填：debt_to_income 供模型；debt_ratio 兼容其它引用方。
+                // 注意顺序：多源特征在下方装配，会覆盖同名键（多源优先）。
                 putIfNotNull(features, "debt_ratio", profile.getDebtRatio());
+                putIfNotNull(features, "debt_to_income", profile.getDebtRatio());
                 putIfNotNull(features, "monthly_income", profile.getMonthlyIncome());
                 putIfNotNull(features, "credit_lines", profile.getCreditLines());
                 putIfNotNull(features, "dependents", profile.getDependents());
@@ -226,7 +231,13 @@ public class FeatureTransformationServiceImpl implements FeatureTransformationSe
                     }
                 }
             }
-            // 3) XGB 多源提纯分（v4-fusion / v5-fusion 使用；v3 / v4 会忽略该特征）
+            // 3.5) 【T1 修复】补上 gps_deviation_km_longterm —— 它是 v4 / v4-fusion / XGB 的
+            //      **在册特征**，但此前线上没有任何装配来源（恒判缺失，P-038）。
+            //      此处用「档案地址 + 多源 location 经纬度」计算本次偏离距离（城市级）。
+            //      语义说明：设计 §3.3 原意是"长期偏离"，当前实现为"本次偏离"（见开发文档 D-T1）。
+            putGpsDeviation(features, profile);
+
+            // 4) XGB 多源提纯分（v4-fusion / v5-fusion 使用；v3 / v4 会忽略该特征）
             if (xgbTreeScorer.isReady()) {
                 Double xgbScore = xgbTreeScorer.predictMultiScore(features);
                 if (xgbScore != null) {
@@ -244,6 +255,45 @@ public class FeatureTransformationServiceImpl implements FeatureTransformationSe
     private void putIfNotNull(Map<String, Object> target, String key, Object value) {
         if (value != null) {
             target.put(key, value);
+        }
+    }
+
+    /**
+     * 【T1】计算并写入 {@code gps_deviation_km_longterm}（地址与定位的城市级偏离距离）
+     *
+     * <p>该特征此前在线**无任何生产者**，导致 v4 / v4-fusion / XGB 恒判其缺失（P-038）。
+     * 数据来源：档案的 {@code home_address} / {@code company_address} +
+     * 多源 location 块的 {@code latitude} / {@code longitude}（阶段 C3 已落库）。
+     *
+     * <p><b>算不出时不写入</b>（无地址 / 无定位 / 城市解析失败）→ 由模型侧用
+     * {@code fill_value} 兜底（P-037 修复），保持训练/在线口径一致。
+     *
+     * <p>⚠️ 语义说明：设计 §3.3 原意是"**长期**偏离常驻地的程度"，当前实现是"**本次**偏离"，
+     * 完整的历史聚合版本见 `特征工程层修复开发文档.md` 阶段 D。
+     */
+    private void putGpsDeviation(Map<String, Object> features, UserCreditProfile profile) {
+        try {
+            String address = null;
+            if (profile != null) {
+                String home = profile.getHomeAddress();
+                address = (home != null && !home.isBlank()) ? home : profile.getCompanyAddress();
+            }
+            double[] city = com.loan.util.GeoCodeUtil.locate(address);
+            if (city == null) {
+                return;   // 无地址或城市解析失败
+            }
+            Object lat = features.get("latitude");
+            Object lon = features.get("longitude");
+            if (!(lat instanceof Number latN) || !(lon instanceof Number lonN)) {
+                return;   // 无定位数据
+            }
+            double km = com.loan.util.GeoCodeUtil.distanceKm(city[0], city[1],
+                    latN.doubleValue(), lonN.doubleValue());
+            double rounded = Math.round(km * 100d) / 100d;
+            features.put("gps_deviation_km_longterm", rounded);
+            log.info("📍 GPS 偏离距离 = {} km（阶段 C3/T1）", rounded);
+        } catch (Exception e) {
+            log.warn("⚠️ gps_deviation_km_longterm 计算失败（跳过，交由 fill_value 兜底）: {}", e.getMessage());
         }
     }
 

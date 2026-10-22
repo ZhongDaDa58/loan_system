@@ -47,12 +47,28 @@ public class ScoreMetrics {
 
     /**
      * 指标快照
+     *
+     * 说明：`degradedRate` 是**降级监控**的核心指标 ——
+     *     产品级阈值按 v4 分布标定，一旦降级到 v3，同一阈值的决策含义会变化（偏严），
+     *     因此降级率持续偏高时需人工介入（详见《评分卡模型档位与降级机制.md》§3.6 / P-020）。
      */
     public Map<String, Object> snapshot() {
         Map<String, Object> result = new LinkedHashMap<>();
         long total = totalScores.get();
+        long degraded = degradedCount.get();
         result.put("totalScores", total);
-        result.put("degradedCount", degradedCount.get());
+        result.put("degradedCount", degraded);
+
+        // 降级率（%，保留两位）
+        double degradedRate = total == 0 ? 0.0
+                : Math.round(degraded * 10000.0 / total) / 100.0;
+        result.put("degradedRate", degradedRate);
+        if (degradedRate >= 5.0) {
+            result.put("degradedAlert", String.format(
+                    "⚠️ 降级率 %.2f%% 偏高：当前决策口径可能偏离标定基准（阈值按 v4 标定，降级后判定偏严），"
+                            + "请检查多源数据同步与模型加载状态", degradedRate));
+        }
+
         result.put("avgElapsedMs", total == 0 ? 0 : totalElapsedMs.get() / total);
 
         Map<String, Object> versions = new LinkedHashMap<>();

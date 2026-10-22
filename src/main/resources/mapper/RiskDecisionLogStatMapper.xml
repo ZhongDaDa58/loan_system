@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.RiskDecisionLogStatMapper">
+
+    <!-- 按模型版本：调用量 + 决策分布 + 平均分 + 时间范围 -->
+    <!-- 修正（2026-10-13）：原先只匹配 'AUTO_APPROVE'，而实际写入的是 'AUTO_PASS'
+         （ScorecardResultEnum.AUTO_PASS），导致**所有自动通过被计入 rejectCount**。
+         同时为「降额」（APPROVE_DOWNGRADE）单独统计 —— 降额 ≠ 拒绝。 -->
+    <select id="countDecisionsByModelVersion" resultType="java.util.Map">
+        SELECT
+            COALESCE(model_version, 'unknown')                                              AS modelVersion,
+            COUNT(*)                                                                        AS totalCount,
+            SUM(CASE WHEN scorecard_decision IN ('AUTO_PASS','AUTO_APPROVE')
+                     THEN 1 ELSE 0 END)                                                     AS autoApproveCount,
+            SUM(CASE WHEN scorecard_decision = 'MANUAL_REVIEW' THEN 1 ELSE 0 END)           AS manualReviewCount,
+            SUM(CASE WHEN scorecard_decision = 'APPROVE_DOWNGRADE' THEN 1 ELSE 0 END)       AS downgradeCount,
+            SUM(CASE WHEN scorecard_decision NOT IN
+                          ('AUTO_PASS','AUTO_APPROVE','MANUAL_REVIEW','APPROVE_DOWNGRADE')
+                     THEN 1 ELSE 0 END)                                                     AS rejectCount,
+            ROUND(AVG(scorecard_score), 1)                                                  AS avgScore,
+            MIN(scorecard_score)                                                            AS minScore,
+            MAX(scorecard_score)                                                            AS maxScore,
+            MIN(decision_time)                                                              AS firstTime,
+            MAX(decision_time)                                                              AS lastTime
+        FROM risk_decision_log
+        GROUP BY COALESCE(model_version, 'unknown')
+        ORDER BY totalCount DESC
+    </select>
+
+    <!-- 按模型版本 + 分数桶，并拆分"近 30 天 / 30 天前"两期（PSI 用） -->
+    <select id="countScoreBucketsByModelVersion" resultType="java.util.Map">
+        SELECT
+            COALESCE(model_version, 'unknown')                                              AS modelVersion,
+            FLOOR(scorecard_score / #{bucketSize})                                          AS bucket,
+            #{bucketSize}                                                                   AS bucketSize,
+            COUNT(*)                                                                        AS totalCount,
+            SUM(CASE WHEN decision_time &gt;= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS recentCount,
+            SUM(CASE WHEN decision_time &lt;  DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS baseCount
+        FROM risk_decision_log
+        WHERE scorecard_score IS NOT NULL
+        GROUP BY COALESCE(model_version, 'unknown'), FLOOR(scorecard_score / #{bucketSize})
+        ORDER BY modelVersion, bucket
+    </select>
+
+    <!-- 全局分数桶分布（用于展示整体分数分布） -->
+    <select id="countAllScoreBuckets" resultType="java.util.Map">
+        SELECT
+            FLOOR(scorecard_score / #{bucketSize})  AS bucket,
+            #{bucketSize}                            AS bucketSize,
+            COUNT(*)                                 AS totalCount
+        FROM risk_decision_log
+        WHERE scorecard_score IS NOT NULL
+        GROUP BY FLOOR(scorecard_score / #{bucketSize})
+        ORDER BY bucket
+    </select>
+
+</mapper>

@@ -29,6 +29,8 @@ import java.util.HexFormat;
 @Service
 public class ContractServiceImpl implements ContractService {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ContractServiceImpl.class);
+
     @Resource
     private LoanApplicationMapper loanApplicationMapper;
 
@@ -74,7 +76,7 @@ public class ContractServiceImpl implements ContractService {
 
             return Result.success("/contracts/" + fileName);
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("合同草稿生成失败 applicationId={}", applicationId, e);
             throw new BusinessException(500, "合同草稿生成失败: " + e.getMessage());
         }
     }
@@ -117,7 +119,7 @@ public class ContractServiceImpl implements ContractService {
 
             return Result.success("签署成功");
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("用户签名处理失败", e);
             throw new BusinessException(500, "用户签名处理失败: " + e.getMessage());
         }
     }
@@ -163,7 +165,7 @@ public class ContractServiceImpl implements ContractService {
 
             return Result.success("平台盖章成功，合同已生效");
         } catch (Exception e) {
-            e.printStackTrace();
+            log.error("平台盖章失败", e);
             throw new BusinessException(500, "平台盖章失败: " + e.getMessage());
         }
     }
@@ -199,9 +201,21 @@ public class ContractServiceImpl implements ContractService {
                 + "-" + application.getApplicationId().substring(0, 4));
         context.setVariable("borrowerName", identity != null ? identity.getUserRealName() : "");
         context.setVariable("idCard", identity != null ? identity.getIdCardNumber() : "");
-        context.setVariable("amount", application.getApplyAmount());
+        // S4b：合同金额取「批准金额」（规则 DOWNGRADE 降额后的最终放款额）；
+        // 未降额时 approved_amount 为 NULL → 回退申请金额，保证原有行为不变。
+        java.math.BigDecimal contractAmount = application.getApprovedAmount() != null
+                ? application.getApprovedAmount() : application.getApplyAmount();
+        context.setVariable("amount", contractAmount);
         context.setVariable("term", application.getApplyTerm());
-        context.setVariable("rate", "12.5");
+        // 精细化定价（设计 §2）：优先使用申请单命中的档位利率（模板按百分数展示）；
+        // 未命中（applied_rate 为 NULL）时保持原有 12.5% 兜底，行为不变。
+        String rateText = "12.5";
+        if (application.getAppliedRate() != null) {
+            rateText = application.getAppliedRate()
+                    .multiply(new java.math.BigDecimal("100"))
+                    .stripTrailingZeros().toPlainString();
+        }
+        context.setVariable("rate", rateText);
         context.setVariable("signDate", signDate != null ? signDate : "");
         context.setVariable("stampDate", stampDate != null ? stampDate : "");
         context.setVariable("signatureImage", signatureBase64);  // 嵌入签名

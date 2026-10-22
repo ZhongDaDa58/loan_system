@@ -1,5 +1,7 @@
 package com.loan.service.impl;
 
+import lombok.extern.slf4j.Slf4j;
+
 import com.loan.entity.MonthlyRepayment;
 import com.loan.entity.enums.RepaymentStatusEnum;
 import com.loan.mapper.MonthlyRepaymentMapper;
@@ -18,6 +20,7 @@ import java.util.List;
  * 每天凌晨 2 点自动检查未还款记录，将超过到期日的标记为逾期并发送通知
  */
 @Service
+@Slf4j
 public class OverdueCheckService {
 
     @Resource
@@ -58,7 +61,7 @@ public class OverdueCheckService {
                 );
                 if (rows > 0) {
                     overdueCount++;
-                    System.out.println("标记逾期：" + repayment.getRepaymentId() +
+                    log.info("标记逾期：" + repayment.getRepaymentId() +
                             ", 期数：" + repayment.getTerm() +
                             ", 到期日：" + repayment.getDueDate());
 
@@ -76,14 +79,14 @@ public class OverdueCheckService {
                             );
                         }
                     } catch (Exception e) {
-                        System.err.println("发送逾期通知失败: " + e.getMessage());
+                        log.error("发送逾期通知失败 repaymentId={}", repayment.getRepaymentId(), e);
                     }
                 }
             }
         }
 
         if (overdueCount > 0) {
-            System.out.println("逾期检查完成，共标记 " + overdueCount + " 笔逾期记录");
+            log.info("逾期检查完成，共标记 " + overdueCount + " 笔逾期记录");
         }
     }
 

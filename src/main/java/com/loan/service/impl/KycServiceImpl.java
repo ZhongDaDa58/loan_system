@@ -64,9 +64,13 @@ public class KycServiceImpl implements KycService {
             // 1. 保存人脸抓拍图
             String imageUrl = fileStorageUtil.saveSignature(imageBase64);
 
-            // 2. 模拟活体检测和比对 (随机生成 85-99 分)
+            // 2. 模拟活体检测和比对
+            //    阶段 C1：让模拟结果具有真实的通过/失败分布 —— 原为 85-99 分（恒 >= 80），
+            //    导致 isPass 恒 true、活体形同虚设。现改 75-99 分、阈值 80，约 20% 判失败，
+            //    使活体结果能真实参与第一层 L1-08/L1-09 的判定。
+            //    ⚠️ 接入真实活体 SDK 时只需替换此处，其余链路（落库 → 装配 → 规则）不变。
             Random random = new Random();
-            BigDecimal score = new BigDecimal(85 + random.nextInt(15));
+            BigDecimal score = new BigDecimal(75 + random.nextInt(25));
             boolean isPass = score.doubleValue() >= 80;
 
             // 3. 记录日志
@@ -74,7 +78,7 @@ public class KycServiceImpl implements KycService {
             log.setUserId(userId);
             log.setFaceImageUrl(imageUrl);
             log.setSimilarityScore(score);
-            log.setIsLive(1);
+            log.setIsLive(isPass ? 1 : 0);
             log.setResult(isPass ? "PASS" : "FAIL");
             log.setCreateTime(new Date());
             faceLogMapper.insert(log);
@@ -100,6 +104,19 @@ public class KycServiceImpl implements KycService {
             throw new RuntimeException("身份证号码格式不正确");
         }
 
+        // 1.5 阶段 C1：校验活体结果（设计 §5①「活体检测等手段拦截明显伪造申请」）
+        //     原先直接 setVerifyStatus(1) 不校验人脸结果 → 活体形同虚设（缺口 G1）
+        UserFaceLog latestFace = faceLogMapper.selectLatestByUserId(userId);
+        boolean livenessOk = latestFace != null
+                && latestFace.getSimilarityScore() != null
+                && latestFace.getSimilarityScore().doubleValue() >= 80d
+                && latestFace.getIsLive() != null && latestFace.getIsLive() == 1;
+        if (!livenessOk) {
+            throw new com.loan.exception.BusinessException(400, latestFace == null
+                    ? "请先完成人脸活体检测"
+                    : "人脸活体检测未通过，请重新认证");
+        }
+
         // 2. 保存认证信息
         UserIdentity identity = new UserIdentity();
         identity.setUserId(userId);
@@ -107,7 +124,7 @@ public class KycServiceImpl implements KycService {
         identity.setIdCardNumber(idCardNumber); // 生产环境建议加密
         identity.setIdCardFrontUrl(frontUrl);
         identity.setFaceCaptureUrl(factureUrl);
-        identity.setVerifyStatus(1); // 直接设为已通过（因为是模拟）
+        identity.setVerifyStatus(1); // 已在 1.5 校验活体，此处置为已通过
         identityMapper.insert(identity);
 
         // 3. 更新 sys_user 表状态

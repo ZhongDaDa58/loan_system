@@ -1,5 +1,7 @@
 package com.loan.service.impl;
 
+import lombok.extern.slf4j.Slf4j;
+
 import com.loan.entity.AuditRecord;
 import com.loan.entity.LoanApplication;
 import com.loan.entity.UserCreditProfile;
@@ -32,6 +34,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
+@Slf4j
 public class AuditServiceImpl implements AuditService {
 
     @Resource
@@ -42,6 +45,10 @@ public class AuditServiceImpl implements AuditService {
 
     @Resource
     private ContractService contractService; // ⭐ 注入合同服务
+
+    /** 业务指标（阶段一 1.5：合同生成失败可告警，替代原先只有 System.err 的静默失败） */
+    @Resource
+    private com.loan.metrics.RiskMetrics riskMetrics;
 
     @Resource
     private MonthlyRepaymentMapper monthlyRepaymentMapper;
@@ -107,6 +114,10 @@ public class AuditServiceImpl implements AuditService {
         auditRecord.setAuditResult(auditResult);
         auditRecord.setAuditOpinion(auditDTO.getAuditOpinion() == null ? "无" : auditDTO.getAuditOpinion());
         auditRecord.setAuditTime(new Date());
+        // S1：Y 标签落库（设计 §8「人工结论回流训练库」；三项均可选填）
+        auditRecord.setFinalLabel(auditDTO.getFinalLabel());
+        auditRecord.setFraudTag(auditDTO.getFraudTag());
+        auditRecord.setRejectReason(auditDTO.getRejectReason());
 
         auditRecordMapper.insert(auditRecord);
 
@@ -118,7 +129,10 @@ public class AuditServiceImpl implements AuditService {
                 try {
                     contractService.generateDraftContract(auditDTO.getApplicationId());
                 } catch (Exception e) {
-                    System.err.println("⚠️ 审核通过但合同生成失败: " + e.getMessage());
+                    // 保留堆栈：合同没生成 = 用户无法签约 = 业务流程中断，必须能事后追溯
+                    log.error("审核通过但合同生成失败 applicationId={}", auditDTO.getApplicationId(), e);
+                    // 1.5：指标化 —— 可配告警（原先只有 System.err，重启即丢、无人知晓）
+                    riskMetrics.contractFailed();
                 }
                 // 通知用户签署合同
                 notificationService.sendNotification(

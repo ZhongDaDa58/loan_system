@@ -1,5 +1,7 @@
 package com.loan.service.impl;
 
+import lombok.extern.slf4j.Slf4j;
+
 import com.loan.entity.vo.UpcomingRepaymentVO;
 import com.loan.mapper.MonthlyRepaymentMapper;
 import com.loan.mapper.NotificationMapper;
@@ -17,6 +19,7 @@ import java.util.List;
  * 每天上午 9:00 检查未来 3 天内到期的未还款项，发送 App 内通知
  */
 @Service
+@Slf4j
 public class RepaymentReminderService {
 
     @Resource
@@ -67,7 +70,7 @@ public class RepaymentReminderService {
         }
 
         if (sentCount > 0) {
-            System.out.println("还款提醒完成，共发送 " + sentCount + " 条提醒");
+            log.info("还款提醒完成，共发送 " + sentCount + " 条提醒");
         }
     }
 

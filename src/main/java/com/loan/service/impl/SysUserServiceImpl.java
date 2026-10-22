@@ -1,4 +1,6 @@
 package com.loan.service.impl;
+
+import lombok.extern.slf4j.Slf4j;
 import com.loan.entity.SysUser;
 import com.loan.entity.dto.UserChangePasswordDTO;
 import com.loan.entity.dto.UserLoginDTO;
@@ -15,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 
 @Service
+@Slf4j
 public class SysUserServiceImpl implements SysUserService {
 
     @Resource
@@ -27,7 +30,6 @@ public class SysUserServiceImpl implements SysUserService {
     public Result<?> register(UserRegisterDTO registerDTO) {
         // 手机号查重
         SysUser existUser = sysUserMapper.selectByPhone(registerDTO.getPhone());
-        System.out.println("registering");
         if (existUser != null) {
             throw new BusinessException(400, "手机号已注册");
         }

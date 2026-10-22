@@ -19,6 +19,8 @@ public class LoanApplicationBasicVO {
 
     // ===== 申请内容 =====
     private BigDecimal applyAmount;     // 申请金额
+    /** 批准金额（S4c：规则 DOWNGRADE 降额后的最终放款额）；null = 未降额，按申请金额 */
+    private BigDecimal approvedAmount;
     private Integer applyTerm;          // 申请期限（月）
     private BigDecimal monthlyPayment;  // 每月应还（等额本息计算）
 

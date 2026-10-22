@@ -43,6 +43,13 @@ public class MultiSourceController {
         return multiSourceService.getProfile(userId);
     }
 
+    @GetMapping("/profile/of/{userId}")
+    @Operation(summary = "按用户ID查询多源档案",
+            description = "供 Web 审批详情页查看借款人的多源（非传统）数据；只读，不影响 C 端 /profile 行为")
+    public Result<?> getProfileOfUser(@PathVariable("userId") String userId) {
+        return multiSourceService.getProfile(userId);
+    }
+
     @PostMapping("/event")
     @Operation(summary = "客户端事件上报", description = "App 端设备/行为事件上报入口（预留：本期仅校验与记录日志）")
     public Result<?> reportEvents(@Valid @RequestBody List<MultiSourceEventDTO> events,

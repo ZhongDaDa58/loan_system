@@ -1,0 +1,30 @@
+# =============================================================================
+# 可选：容器内构建时用的 Maven settings（阶段三 3.1 备选方案）
+# =============================================================================
+# 当前 Dockerfile 采用「单阶段 + 直接拷 target/*.jar」，不需要本文件。
+#
+# 只有在下面这种场景才需要：
+#   - 纯 Docker 流水线（没有宿主机 Maven 环境）
+#   - 需要在容器内执行 mvn package
+#
+# 用法：
+#   docker build -f Dockerfile.multi-stage .
+#   其中 Dockerfile.multi-stage 里的构建阶段需加：
+#     COPY docker/maven-settings.xml /root/.m2/settings.xml
+#     RUN mvn -B -q -s /root/.m2/settings.xml dependency:go-offline
+#
+# ⚠️ 为什么不默认启用：
+#    本项目实测「容器内直连 Maven 中央仓库」会报
+#    "SSL peer shut down incorrectly"（Docker daemon 的代理不作用于容器内网络）。
+#    换镜像源是否可用取决于网络环境，所以不设为默认路径。
+# =============================================================================
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+    <mirrors>
+        <mirror>
+            <id>aliyun</id>
+            <name>Aliyun Public Repository</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <mirrorOf>central</mirrorOf>
+        </mirror>
+    </mirrors>
+</settings>

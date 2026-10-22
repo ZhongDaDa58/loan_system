@@ -143,9 +143,10 @@ public class LoanIssueServiceImpl implements LoanIssueService {
         String cardInfo = disbursementCard != null ? "，放款至银行卡：" + disbursementCard.getAliasName() : "";
         try {
             contractService.stampAndActivate(applicationId);
-            System.out.println("✅ 放款成功，平台公章已加盖，合同正式生效");
+            log.info("✅ 放款成功，平台公章已加盖，合同正式生效");
         } catch (Exception e) {
-            System.err.println("⚠️ 放款成功但合同盖章失败: " + e.getMessage()+"请联系客服处理");
+            // 保留堆栈：钱已放出去但合同未盖章，属必须人工介入的不一致状态
+            log.error("放款成功但合同盖章失败，需人工介入处理 applicationId={}", applicationId, e);
             // 注意：这里通常不回滚放款，因为钱已经出去了，但需要人工介入处理合同问题
         }
 

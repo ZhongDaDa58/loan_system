@@ -4,10 +4,12 @@
     <!-- 保存申请记录 -->
     <insert id="insert" parameterType="com.loan.entity.LoanApplication">
         INSERT INTO loan_application (
-            application_id, user_id, product_id, apply_amount, apply_term,
+            application_id, user_id, product_id, apply_amount, approved_amount, apply_term,
+            applied_rate, pricing_tier, idempotency_key,
             credit_score, scorecard_score, scorecard_decision, application_status, apply_time, disbursement_card_id
         ) VALUES (
-                     #{applicationId}, #{userId}, #{productId}, #{applyAmount}, #{applyTerm},
+                     #{applicationId}, #{userId}, #{productId}, #{applyAmount}, #{approvedAmount}, #{applyTerm},
+                     #{appliedRate}, #{pricingTier}, #{idempotencyKey},
                      #{creditScore}, #{scorecardScore}, #{scorecardDecision}, #{applicationStatus}, #{applyTime}, #{disbursementCardId}
                  )
     </insert>
@@ -48,6 +50,9 @@
         user_id AS userId,
         product_id AS productId,
         apply_amount AS applyAmount,
+        approved_amount AS approvedAmount,
+        applied_rate AS appliedRate,
+        pricing_tier AS pricingTier,
         apply_term AS applyTerm,
         application_status AS applicationStatus,
         credit_score AS creditScore,
@@ -73,7 +78,9 @@
     </update>
 
     <select id="selectApplyAmountByApplicationId" resultType="java.math.BigDecimal">
-        SELECT apply_amount FROM loan_application WHERE application_id = #{applicationId}
+        <!-- P-025：优先返回「批准金额」（规则 DOWNGRADE 降额后的最终放款额）；
+             未降额时为 NULL，回退到申请金额 —— 保证现有行为不变 -->
+        SELECT COALESCE(approved_amount, apply_amount) FROM loan_application WHERE application_id = #{applicationId}
     </select>
 
     <select id="selectInterestRateByProductId" resultType="java.math.BigDecimal">

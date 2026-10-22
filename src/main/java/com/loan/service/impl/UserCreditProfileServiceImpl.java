@@ -115,8 +115,16 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         userProfile.setRevolvingUtil(profile.getRevolvingUtil());
 
         try {
-            Integer score = scorecardService.calculateScoreOnly(userProfile);
+            // 【口径统一】与建档/申请链路走同一入口：ScorecardRoutingService
+            // （多源多模型 v4 → 多源覆盖不足回落 v3）
+            // 原实现直接调 scorecardService.calculateScoreOnly()（固定 v3 单模型），
+            // 会让 rescore 把档案分从"多源分"覆盖成"单源分"（同类问题见 P-030）
+            com.loan.service.ScorecardRoutingService.ScoreOutcome outcome =
+                    scorecardRoutingService.score(userId, userProfile);
+            Integer score = outcome.score();
             profileMapper.updateScore(userId, score);
+            log.info("✅ 重新评分: userId={} score={} model={} source={}",
+                    userId, score, outcome.modelKey(), outcome.source());
             return Result.success("重新评分完成，当前信用分：" + score);
         } catch (Exception e) {
             log.warn("⚠️ 重新评分失败: userId={}, 原因={}", userId, e.getMessage());
@@ -134,6 +142,9 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         entity.setGender(dto.getGender());
         entity.setEducation(dto.getEducation());
         entity.setOccupation(dto.getOccupation());
+        // 阶段 C2：地址（可选填，用于第一层交叉验证）
+        entity.setHomeAddress(dto.getHomeAddress());
+        entity.setCompanyAddress(dto.getCompanyAddress());
 
         // 嵌套对象序列化为 JSON 字符串存储
         entity.setFamilyInfo(toJson(dto.getFamilyInfo()));
@@ -210,6 +221,9 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         personalInfo.setGender(dto.getGender());
         personalInfo.setEducation(dto.getEducation());
         personalInfo.setOccupation(dto.getOccupation());
+        // 阶段 C2：地址回显（App/Web 读取档案时能看到已填写的地址）
+        personalInfo.setHomeAddress(dto.getHomeAddress());
+        personalInfo.setCompanyAddress(dto.getCompanyAddress());
         info.setPersonalInfo(personalInfo);
 
         // FamilyInfo / FinancialInfo / EmploymentInfo 直接映射（类型结构一致）
@@ -245,7 +259,7 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         try {
             return objectMapper.writeValueAsString(obj);
         } catch (Exception e) {
-            System.err.println("⚠️ JSON 序列化失败 (" + obj.getClass().getSimpleName() + "): " + e.getMessage());
+            log.error("⚠️ JSON 序列化失败 (" + obj.getClass().getSimpleName() + "): " + e.getMessage());
             return null;
         }
     }

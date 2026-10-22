@@ -1,0 +1,86 @@
+# =============================================================================
+# 一键启动：app + mysql + redis（阶段三 3.1）
+# =============================================================================
+# 用法：
+#   docker compose up -d --build      启动（首次会构建镜像，较慢）
+#   docker compose ps                 查看状态（三项应 healthy）
+#   docker compose logs -f app        看应用日志
+#   docker compose down               停止（保留数据）
+#   docker compose down -v            停止并清空数据（慎用）
+#
+# ⚠️ 端口说明：本机已有 MySQL(3306) 与 Redis(6379) 在运行，
+#    为避免冲突，容器端口映射到 3307 / 6380。
+#    应用在容器内部通过服务名（mysql:3306、redis:6379）连接，不受宿主机端口影响。
+# =============================================================================
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: loan-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-114514}
+      MYSQL_DATABASE: loan_risk_control
+      TZ: Asia/Shanghai
+    # 字符集必须显式指定：本机 mysql 默认 gbk 曾导致中文乱码（见 测试出现问题.md）
+    command: >
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+      --default-time-zone=+08:00
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动时自动执行初始化脚本（仅当数据卷为空时）
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-p${DB_PASSWORD:-114514}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: loan-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    container_name: loan-app
+    depends_on:
+      mysql:
+        # ★ 关键：默认的 depends_on 只等"容器启动"，不等"服务可用"。
+        #   没有 condition: service_healthy 时，应用会在 MySQL 初始化完成前连接 → 启动失败。
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/loan_risk_control?allowMultiQueries=true&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true"
+      SPRING_DATASOURCE_USERNAME: root
+      DB_PASSWORD: ${DB_PASSWORD:-114514}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-loan_system_springboot40_secret_2024}
+      LOG_HOME: /app/logs
+      # 容器内受限内存下，连接池按实际需要配置（阶段二压测结论：默认 10 会成为瓶颈）
+      SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: 30
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./logs:/app/logs
+      - ./contracts:/app/contracts
+    restart: unless-stopped
+
+volumes:
+  mysql-data:
+  redis-data:

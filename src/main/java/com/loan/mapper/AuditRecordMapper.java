@@ -19,4 +19,12 @@ public interface AuditRecordMapper {
                                                                                 @org.apache.ibatis.annotations.Param("endDate") String endDate,
                                                                                 @org.apache.ibatis.annotations.Param("offset") int offset,
                                                                                 @org.apache.ibatis.annotations.Param("limit") int limit);
+
+    /**
+     * S1：导出「特征 + Y 标签」样本（设计 §8 人工结论回流训练库）
+     *
+     * <p>只返回**已标注**（{@code final_label} 非空）的审核记录，并关联
+     * {@code risk_decision_log} 取出当时实际装配的特征快照。
+     */
+    java.util.List<java.util.Map<String, Object>> selectLabeledSamples(@Param("limit") int limit);
 }

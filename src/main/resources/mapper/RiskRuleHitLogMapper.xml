@@ -78,4 +78,21 @@
         LIMIT #{limit}
     </select>
 
+    <select id="selectByApplicationId" resultType="com.loan.entity.RiskRuleHitLog">
+        SELECT
+            id,
+            application_id AS applicationId,
+            user_id        AS userId,
+            rule_id        AS ruleId,
+            rule_code      AS ruleCode,
+            rule_name      AS ruleName,
+            layer,
+            action,
+            shadow,
+            hit_time       AS hitTime
+        FROM risk_rule_hit_log
+        WHERE application_id = #{applicationId}
+        ORDER BY hit_time
+    </select>
+
 </mapper>

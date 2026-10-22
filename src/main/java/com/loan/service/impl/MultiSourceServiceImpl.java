@@ -95,6 +95,8 @@ public class MultiSourceServiceImpl implements MultiSourceService {
         blocks.put(SourceTypeEnum.SOCIAL.getCode(), new LinkedHashMap<String, Object>());
         blocks.put(SourceTypeEnum.DEVICE.getCode(), new LinkedHashMap<String, Object>());
         blocks.put("behavior", new LinkedHashMap<String, Object>());
+        // 阶段 C3：位置数据块（供第一层交叉验证读取 latitude/longitude）
+        blocks.put(SourceTypeEnum.LOCATION.getCode(), new LinkedHashMap<String, Object>());
 
         try {
             Map<String, Object> snapshot = multiSourceIngestService.featureSnapshot(userId);
@@ -140,6 +142,10 @@ public class MultiSourceServiceImpl implements MultiSourceService {
         }
         if (field.startsWith("gps_") || field.startsWith("behavior_") || field.startsWith("ip_")) {
             return "behavior";
+        }
+        // 阶段 C3：经纬度归入 location 块（第一层交叉验证用；此前会落到 "other" 而读不到）
+        if ("latitude".equals(field) || "longitude".equals(field)) {
+            return SourceTypeEnum.LOCATION.getCode();
         }
         return "other";
     }

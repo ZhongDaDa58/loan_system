@@ -37,6 +37,11 @@ public class RiskRuleServiceImpl implements RiskRuleService {
     private com.loan.mapper.RiskRuleHitLogMapper riskRuleHitLogMapper;
 
     @Override
+    // 2.2b：规则列表每笔申请查一次全表、规则极少变更 → 缓存；写操作时主动清除
+    // 依赖 RedisConfig 中显式定义的 RedisCacheManager（JSON 序列化）；
+    // 否则 Spring Boot 默认用 JDK 序列化 → 实体未实现 Serializable → "Cannot serialize"
+    @org.springframework.cache.annotation.Cacheable(
+            value = "riskRules", key = "(#category == null) ? 'all' : #category")
     public List<RiskRule> list(String category) {
         return riskRuleMapper.selectAll(category);
     }
@@ -47,6 +52,7 @@ public class RiskRuleServiceImpl implements RiskRuleService {
     }
 
     @Override
+    @org.springframework.cache.annotation.CacheEvict(value = "riskRules", allEntries = true)
     public RiskRule create(RiskRule rule) {
         validate(rule);
         if (rule.getLayer() == null || rule.getLayer().isBlank()) {
@@ -68,6 +74,7 @@ public class RiskRuleServiceImpl implements RiskRuleService {
     }
 
     @Override
+    @org.springframework.cache.annotation.CacheEvict(value = "riskRules", allEntries = true)
     public RiskRule update(Long id, RiskRule rule) {
         RiskRule existing = riskRuleMapper.selectById(id);
         if (existing == null) {
@@ -83,11 +90,13 @@ public class RiskRuleServiceImpl implements RiskRuleService {
     }
 
     @Override
+    @org.springframework.cache.annotation.CacheEvict(value = "riskRules", allEntries = true)
     public boolean delete(Long id) {
         return riskRuleMapper.deleteById(id) > 0;
     }
 
     @Override
+    @org.springframework.cache.annotation.CacheEvict(value = "riskRules", allEntries = true)
     public boolean toggle(Long id, Boolean enabled) {
         if (riskRuleMapper.selectById(id) == null) {
             throw new BusinessException(404, "规则不存在: " + id);
@@ -99,6 +108,7 @@ public class RiskRuleServiceImpl implements RiskRuleService {
     }
 
     @Override
+    @org.springframework.cache.annotation.CacheEvict(value = "riskRules", allEntries = true)
     public boolean setShadow(Long id, Boolean shadow) {
         RiskRule rule = riskRuleMapper.selectById(id);
         if (rule == null) {

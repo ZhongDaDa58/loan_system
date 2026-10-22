@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.LoanPricingTierMapper">
+
+    <!-- 精细化定价：按「产品 + 评分」匹配档位（产品专属优先，其次全局） -->
+    <select id="selectMatching" resultType="com.loan.entity.LoanPricingTier">
+        SELECT
+            id, product_id AS productId, min_score AS minScore, max_score AS maxScore,
+            annual_rate AS annualRate, tier_label AS tierLabel, remark, enabled,
+            create_time AS createTime, update_time AS updateTime
+        FROM loan_pricing_tier
+        WHERE enabled = 1
+          AND #{score} BETWEEN min_score AND max_score
+          AND (product_id = #{productId} OR product_id IS NULL)
+        ORDER BY (product_id IS NULL) ASC, min_score DESC
+        LIMIT 1
+    </select>
+
+    <select id="selectAll" resultType="com.loan.entity.LoanPricingTier">
+        SELECT
+            id, product_id AS productId, min_score AS minScore, max_score AS maxScore,
+            annual_rate AS annualRate, tier_label AS tierLabel, remark, enabled,
+            create_time AS createTime, update_time AS updateTime
+        FROM loan_pricing_tier
+        ORDER BY (product_id IS NULL) ASC, min_score DESC
+    </select>
+
+    <insert id="insert" parameterType="com.loan.entity.LoanPricingTier" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO loan_pricing_tier
+            (product_id, min_score, max_score, annual_rate, tier_label, remark, enabled)
+        VALUES
+            (#{productId}, #{minScore}, #{maxScore}, #{annualRate}, #{tierLabel}, #{remark},
+             #{enabled})
+    </insert>
+
+    <update id="update" parameterType="com.loan.entity.LoanPricingTier">
+        UPDATE loan_pricing_tier
+        SET product_id = #{productId},
+            min_score = #{minScore},
+            max_score = #{maxScore},
+            annual_rate = #{annualRate},
+            tier_label = #{tierLabel},
+            remark = #{remark},
+            enabled = #{enabled}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        DELETE FROM loan_pricing_tier WHERE id = #{id}
+    </delete>
+
+</mapper>

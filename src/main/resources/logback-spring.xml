@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  日志配置（阶段一 1.1）
+  =========================================================================
+  目标：让日志"落得下去、看得清楚、查得回来"
+
+  设计说明：
+    1. 控制台 + 文件 双输出：开发看控制台，排查看文件
+    2. SizeAndTimeBasedRollingPolicy：按天 + 按大小双重滚动，历史自动 gzip
+    3. 统一 pattern，预留 traceId / applicationId 两个 MDC 占位
+       （%X{key:-} 的 ":-" 表示 MDC 无此键时输出空串，避免出现 traceId_IS_UNDEFINED）
+    4. LOG_HOME 可用环境变量覆盖（12-Factor：配置外置）
+         本地默认 ./logs        生产可设 -DLOG_HOME=/var/log/loan
+
+  后续依赖（阶段一 1.3）：TraceIdFilter 往 MDC 写入 traceId / applicationId 后，
+  本 pattern 才会输出对应内容。两者配套，单独使用也能正常工作（输出为空）。
+  =========================================================================
+-->
+<configuration>
+
+    <!-- 日志目录：优先取环境变量 LOG_HOME，否则用相对路径 ./logs -->
+    <property name="LOG_HOME" value="${LOG_HOME:-./logs}"/>
+
+    <!-- 统一输出格式 -->
+    <property name="PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] [%X{applicationId:-}] %logger{40} - %msg%n"/>
+
+    <!-- ===== 控制台 ===== -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===== 文件（按天 + 按大小滚动，历史 gzip） ===== -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_HOME}/loan.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- 例：logs/loan.2026-10-13.0.log.gz -->
+            <fileNamePattern>${LOG_HOME}/loan.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>15</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ===== 业务代码 ===== -->
+    <logger name="com.loan" level="INFO"/>
+
+    <!-- ===== MyBatis SQL =====
+         排查慢 SQL 时临时把下面这行改成 DEBUG（会打印每条 SQL 与参数） -->
+    <logger name="com.loan.mapper" level="INFO"/>
+
+    <!-- ===== 第三方框架降噪 ===== -->
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.mybatis" level="INFO"/>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE"/>
+    </root>
+
+</configuration>

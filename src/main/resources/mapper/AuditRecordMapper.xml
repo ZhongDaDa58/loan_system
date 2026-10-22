@@ -4,9 +4,11 @@
     <!-- 保存审核记录 -->
     <insert id="insert" parameterType="com.loan.entity.AuditRecord">
         INSERT INTO audit_record (
-            audit_id, application_id, auditor_id, audit_result, audit_opinion, audit_time
+            audit_id, application_id, auditor_id, audit_result, audit_opinion, audit_time,
+            final_label, fraud_tag, reject_reason
         ) VALUES (
-                     #{auditId}, #{applicationId}, #{auditorId}, #{auditResult}, #{auditOpinion}, #{auditTime}
+                     #{auditId}, #{applicationId}, #{auditorId}, #{auditResult}, #{auditOpinion}, #{auditTime},
+                     #{finalLabel}, #{fraudTag}, #{rejectReason}
                  )
     </insert>
 
@@ -30,8 +32,7 @@
         ORDER BY la.apply_time ASC
     </select>
 
-    <!-- 查询某个审核员的历史审核记录，支持按日期区间过滤并分页 -->
-    <select id="selectByAuditorHistory" resultType="com.loan.entity.vo.AuditHistoryVO">
+    <!-- 查询某个审核员的历史审核记录，支持按日期区间过滤并分页 -->    <select id="selectByAuditorHistory" resultType="com.loan.entity.vo.AuditHistoryVO">
         SELECT ar.audit_id AS auditId,
                ar.application_id AS applicationId,
                ar.auditor_id AS auditorId,
@@ -56,5 +57,26 @@
           </if>
         ORDER BY ar.audit_time DESC
         LIMIT #{offset}, #{limit}
+    </select>
+
+    <!-- S1：导出「特征 + Y 标签」样本（设计 §8 人工结论回流训练库）
+         只取已标注（final_label 非空）的审核记录，关联 risk_decision_log 取特征快照 -->
+    <select id="selectLabeledSamples" resultType="java.util.Map">
+        SELECT
+            ar.application_id      AS applicationId,
+            ar.audit_result        AS auditResult,
+            CAST(ar.final_label AS SIGNED) AS finalLabel,
+            ar.fraud_tag           AS fraudTag,
+            ar.reject_reason       AS rejectReason,
+            ar.audit_time          AS auditTime,
+            rdl.model_version      AS modelVersion,
+            rdl.scorecard_score    AS scorecardScore,
+            rdl.scorecard_decision AS scorecardDecision,
+            rdl.feature_snapshot   AS featureSnapshot
+        FROM audit_record ar
+                 LEFT JOIN risk_decision_log rdl ON rdl.application_id = ar.application_id
+        WHERE ar.final_label IS NOT NULL
+        ORDER BY ar.audit_time DESC
+        LIMIT #{limit}
     </select>
 </mapper>

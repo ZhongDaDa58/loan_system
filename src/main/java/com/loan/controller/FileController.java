@@ -1,5 +1,7 @@
 package com.loan.controller;
 
+import lombok.extern.slf4j.Slf4j;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,6 +17,7 @@ import java.nio.file.Paths;
 @RestController
 @RequestMapping("/api/v1/file")
 @Tag(name = "文件服务模块", description = "图片/文件流访问")
+@Slf4j
 public class FileController {
 
     @Value("${app.file.upload-dir:uploads}")
@@ -32,13 +35,9 @@ public class FileController {
         String fullPath = Paths.get(uploadDir, cleanPath).toString();
         File file = new File(fullPath);
 
-        // 调试：打印实际查找的路径
-        System.out.println("🔍 FileController 查找文件: " + file.getAbsolutePath() + " 是否存在: " + file.exists());
-
         if (!file.exists()) {
             // 第二次尝试：检查项目根目录下的绝对路径
             File altFile = new File(System.getProperty("user.dir"), fullPath);
-            System.out.println("🔍 备选路径: " + altFile.getAbsolutePath() + " 是否存在: " + altFile.exists());
             if (altFile.exists()) {
                 file = altFile;
             } else {

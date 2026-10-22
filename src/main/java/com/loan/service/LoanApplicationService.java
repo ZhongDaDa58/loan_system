@@ -14,6 +14,15 @@ public interface LoanApplicationService {
     // 提交贷款申请
     Result<?> submitApply(LoanApplyDTO applyDTO, String userId);
 
+    /**
+     * 阶段四 4.1：资源归属校验 —— 该申请是否属于指定用户。
+     *
+     * <p>RBAC 只解决"是不是管理员"，**不解决"是不是你自己的数据"**。
+     * 用户端接口（合同下载、还款详情、决策日志等）在放行前必须调本方法，
+     * 否则用户 A 传用户 B 的 applicationId 就能看到 B 的数据。
+     */
+    boolean belongsTo(String applicationId, String userId);
+
     //提交完整信息的贷款申请
     Result<?> submitApplyWithBasicInfo(UserBasicInfoDTO basicInfo, String userId);
 

@@ -39,11 +39,22 @@ public class PaymentServiceImpl implements PaymentService {
     @Resource
     private MonthlyRepaymentMapper repaymentMapper;
 
+    /** 2.3：放款异步处理。必须经代理调用，@Async 才生效（原同类内部调用是无效的） */
+    @Resource
+    private DisbursementAsyncService disbursementAsyncService;
+
+    /** 阶段四 4.3：幂等控制（防重复放款 / 重复还款） */
+    @Resource
+    private com.loan.service.IdempotencyService idempotencyService;
+
     private final Random random = new Random();
 
     @Override
     @Transactional
     public Result<?> initiateDisbursement(String applicationId, String userId, Long cardId, BigDecimal amount) {
+        // 阶段四 4.3：幂等检查 —— ⚠️ 放款是资金类操作，重复执行 = 直接资金损失
+        // 同一 Idempotency-Key 在 5 分钟内重复提交 → 409
+        idempotencyService.acquire("disbursement", userId);
         // 1. 验证用户是否拥有该卡
         UserBankCard userCard = userCardMapper.selectById(cardId);
         if (userCard == null || !userCard.getUserId().equals(userId)) {
@@ -54,38 +65,18 @@ public class PaymentServiceImpl implements PaymentService {
         createTransaction(txnId, applicationId, userId, userCard.getPoolCardId(), amount, "LOAN_DISBURSEMENT", "IN");
 
         // 2. 异步处理放款（模拟银行到账延迟）
-        processDisbursementAsync(txnId, applicationId, userCard.getPoolCardId(), amount);
+        // 2.3 修正：原为同类内部直接调用 this.processDisbursementAsync(...)，
+        // 不经过 Spring AOP 代理，@Async 从未生效 → 放款接口每次都真 sleep 1~3 秒。
+        disbursementAsyncService.processDisbursementAsync(txnId, applicationId, userCard.getPoolCardId(), amount);
 
         return Result.success("放款申请已提交，资金将转入尾号" + userCard.getCardNumber().substring(userCard.getCardNumber().length() - 4));
-    }
-
-    @Async
-    public void processDisbursementAsync(String txnId, String applicationId, Integer poolCardId, BigDecimal amount) {
-        try {
-            Thread.sleep(random.nextInt(2000) + 1000); // 模拟1-3秒延迟
-
-            MockBankCardPool card = getCardAndCheckStatus(poolCardId);
-            BigDecimal before = card.getBalance();
-
-            // 执行入账
-            cardService.updateBalance(poolCardId, amount, "IN");
-
-            BigDecimal after = cardService.getCardById(poolCardId).getBalance();
-
-            // 更新交易状态
-            transactionMapper.updateStatus(txnId, "SUCCESS", null, null, before, after);
-
-            // 更新贷款申请状态为“已放款”
-            loanApplicationMapper.updateStatus(applicationId, "ISSUED");
-
-        } catch (Exception e) {
-            transactionMapper.updateStatus(txnId, "FAILED", "DISBURSE_ERROR", e.getMessage(), null, null);
-        }
     }
 
     @Override
     @Transactional
     public Result<?> initiateRepayment(String orderNo, String userId, Long cardId, BigDecimal amount) {
+        // 阶段四 4.3：幂等检查 —— 重复还款会导致重复扣款
+        idempotencyService.acquire("repayment", userId);
         // 1. 验证用户是否拥有该卡
         UserBankCard userCard = userCardMapper.selectById(cardId);
         if (userCard == null || !userCard.getUserId().equals(userId)) {

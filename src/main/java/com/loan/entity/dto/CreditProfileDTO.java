@@ -33,6 +33,12 @@ public class CreditProfileDTO {
     private String education;
     private String occupation;
 
+    // ===== 阶段 C2：地址（可选填；用于第一层交叉验证，不进模型特征）=====
+    /** 家庭/居住地址 */
+    private String homeAddress;
+    /** 单位地址 */
+    private String companyAddress;
+
     @Valid
     private FamilyInfo familyInfo;
 

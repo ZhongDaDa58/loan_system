@@ -1,6 +1,8 @@
 // FileStorageUtil.java（工具类）
 package com.loan.util;
 
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Component;
 import java.io.File;
 import java.io.IOException;
@@ -13,6 +15,7 @@ import java.util.Base64;
 import java.util.UUID;
 
 @Component
+@Slf4j
 public class FileStorageUtil {
 
     private static final String UPLOAD_DIR = "uploads/";
@@ -70,7 +73,7 @@ public class FileStorageUtil {
             return java.util.Base64.getDecoder().decode(base64);
         } catch (IllegalArgumentException e) {
             // 如果依然失败，记录一下前 100 个字符以便调试
-            System.err.println("Base64 解码失败，开头部分: " + base64.substring(0, Math.min(100, base64.length())));
+            log.error("Base64 解码失败，开头部分: " + base64.substring(0, Math.min(100, base64.length())));
             throw new IllegalArgumentException("Base64 格式严重错误，无法解码", e);
         }
     }

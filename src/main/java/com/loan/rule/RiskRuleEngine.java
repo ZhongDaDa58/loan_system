@@ -58,7 +58,16 @@ public class RiskRuleEngine {
             // GPS / 行为 / IP
             "gps_deviation_km_longterm", "behavior_anomaly_score", "ip_proxy_risk", "ip_geo_mismatch",
             // 基础
-            "revolving_util", "age", "monthly_income", "credit_lines", "dependents"
+            "revolving_util", "age", "monthly_income", "credit_lines", "dependents",
+            // —— 第一层「信息校验先行」派生信号（由 L1SignalAssembler 计算，见开发文档 §4）——
+            // 约定：算不出的信号给哨兵值 -1，并配 xxx_available 标志，供规则显式判断"算不出来"
+            "liveness_passed", "liveness_available",
+            "device_trusted", "device_available",
+            "gps_addr_distance_km", "geo_available", "ip_geo_consistent",
+            "behavior_available", "trust_level",
+            // —— 特征工程层 §3.2 门禁产物（T3）：落选特征清单，供 L3 规则引用 ——
+            // skipped_features 为逗号分隔的字段名（字符串比较用 = / !=）
+            "skipped_feature_count", "skipped_features"
     );
 
     /** 动作优先级（归并时取最高） */
@@ -76,8 +85,12 @@ public class RiskRuleEngine {
 
     /**
      * 评估结果
+     *
+     * @param action      归并后的最高优先级动作（REJECT / MANUAL / DOWNGRADE / FLAG）
+     * @param actionParam 与 {@code action} 对应规则的动作参数
+     *                    （P-025：DOWNGRADE 时存放**保留比例**，如 "0.6" = 只放 60%）
      */
-    public record RuleOutcome(List<RuleHit> hits, String action, String summary) {
+    public record RuleOutcome(List<RuleHit> hits, String action, String actionParam, String summary) {
         public boolean hasHit() {
             return hits != null && !hits.isEmpty();
         }
@@ -89,8 +102,9 @@ public class RiskRuleEngine {
     public RuleOutcome evaluate(List<RiskRule> rules, Map<String, Object> context) {
         List<RuleHit> hits = new ArrayList<>();
         String merged = null;
+        String mergedParam = null;
         if (rules == null || rules.isEmpty()) {
-            return new RuleOutcome(hits, null, null);
+            return new RuleOutcome(hits, null, null, null);
         }
 
         for (RiskRule rule : rules) {
@@ -115,6 +129,7 @@ public class RiskRuleEngine {
             String action = normalizeAction(rule.getAction());
             if (merged == null || rank(action) > rank(merged)) {
                 merged = action;
+                mergedParam = rule.getActionParam();   // P-025：动作参数随最高优先级动作一起归并
             }
             if ("REJECT".equals(action)) {
                 break; // 短路：命中拒绝即停止
@@ -122,7 +137,7 @@ public class RiskRuleEngine {
         }
 
         String summary = hits.isEmpty() ? null : summarize(hits);
-        return new RuleOutcome(hits, merged, summary);
+        return new RuleOutcome(hits, merged, mergedParam, summary);
     }
 
     /**

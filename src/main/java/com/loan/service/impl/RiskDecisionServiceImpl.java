@@ -158,7 +158,7 @@ public class RiskDecisionServiceImpl implements RiskDecisionService {
             return riskRuleEngine.evaluate(rules, context);
         } catch (Exception e) {
             log.warn("⚠️ 规则层 {} 评估异常（按无命中处理）: {}", layer, e.getMessage());
-            return new RiskRuleEngine.RuleOutcome(new ArrayList<>(), null, null);
+            return new RiskRuleEngine.RuleOutcome(new ArrayList<>(), null, null, null);
         }
     }
 

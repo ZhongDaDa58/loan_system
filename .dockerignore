@@ -1,0 +1,40 @@
+# 构建上下文排除清单
+# 目的：减小 docker build 上传的上下文体积、避免把本地产物/密钥带进镜像
+#
+# ⚠️ 关键：Dockerfile 是单阶段构建，靠 `COPY target/*.jar` 拿产物
+#    （容器内不重复跑 Maven —— 容器内访问中央仓库会失败，见 Dockerfile 注释）。
+#    所以 target/ 不能整体排除，只保留 jar，其余（classes、generated-sources 等）排除掉，
+#    避免把上百 MB 的中间产物塞进构建上下文。
+
+target/*
+!target/*.jar
+
+build/
+*.war
+
+# 运行时产物
+logs/
+contracts/
+uploads/
+
+# IDE / 版本控制
+.git/
+.gitignore
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# 文档（镜像里不需要）
+*.md
+docs/
+development/
+
+# 本地数据库脚本（Flyway 迁移脚本在 src/main/resources/db/migration）
+db/
+
+# 本地环境文件
+.env
+*.local

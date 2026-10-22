@@ -45,4 +45,14 @@
         ORDER BY source_type, fetched_at DESC
     </select>
 
+    <!-- 阶段 C5：同设备指纹关联的其它用户数（排除自身）。
+         data_json 为 TEXT，用 JSON_EXTRACT 取值后 JSON_UNQUOTE 去掉外层引号。 -->
+    <select id="countOtherUsersByDeviceFingerprint" resultType="int">
+        SELECT COUNT(DISTINCT user_id)
+        FROM user_multi_source_data
+        WHERE source_type = 'device'
+          AND user_id &lt;&gt; #{userId}
+          AND JSON_UNQUOTE(JSON_EXTRACT(data_json, '$.device_fingerprint_hash')) = #{fingerprint}
+    </select>
+
 </mapper>

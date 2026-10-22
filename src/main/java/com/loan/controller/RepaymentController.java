@@ -24,6 +24,23 @@ public class RepaymentController {
     @Resource
     private RepaymentService repaymentService;
 
+    /** 阶段四 4.1：用于资源归属校验 */
+    @Resource
+    private com.loan.service.LoanApplicationService loanApplicationService;
+
+    /**
+     * 当前用户是否为管理员。
+     *
+     * <p>与 {@code ContractController#canAccess} 保持一致的规则：
+     * **管理员可查看任意申请**（客服/纠纷处理需要），普通用户只能看自己的。
+     */
+    private boolean isAdmin() {
+        var auth = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication();
+        return auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+    }
+
     /**
      * 查询还款计划（需登录）
      */
@@ -40,7 +57,11 @@ public class RepaymentController {
     @GetMapping("/plan/{applicationId}")
     @Operation(summary = "查询还款计划（含每月明细）")
     public Result<RepaymentPlanVO> queryRepaymentPlanDetail(HttpServletRequest request, @PathVariable String applicationId) {
-
+        // 阶段四 4.1：归属校验 —— 不能查看别人的还款计划（含每月应还、剩余期数）
+        String userId = (String) request.getAttribute("userId");
+        if (!isAdmin() && !loanApplicationService.belongsTo(applicationId, userId)) {
+            throw new com.loan.exception.BusinessException(403, "无权查看该还款计划");
+        }
         return repaymentService.queryRepaymentPlanDetail(applicationId);
     }
 

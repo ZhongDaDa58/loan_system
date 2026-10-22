@@ -114,6 +114,24 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- 阶段三 3.3：Testcontainers 集成测试。
+             ⚠️ 为什么必须用真实 MySQL 而不是 H2：
+                本项目有 31 个手写 SQL Mapper，大量使用 MySQL 特有语法
+                （JSON_OBJECT / JSON_EXTRACT / ON DUPLICATE KEY UPDATE / LIMIT x,y /
+                 information_schema 查询），H2 跑不通 —— 用 H2 会得到"测试通过但生产报错"的假象。 -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>1.20.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>mysql</artifactId>
+            <version>1.20.4</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.tomcat.embed</groupId>
             <artifactId>tomcat-embed-core</artifactId>
@@ -147,6 +165,48 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-thymeleaf</artifactId>
+        </dependency>
+
+        <!-- 阶段一 1.4：可观测性 —— 健康检查 / 指标 / Prometheus 暴露 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
+        <!-- 阶段三 3.2：数据库版本化迁移。
+             MySQL 8 需要额外引入 flyway-mysql，否则报 "Unsupported Database: MySQL 8.0"
+
+             ⚠️⚠️ Spring Boot 4.0 重大变更：自动配置不再集中在 spring-boot-autoconfigure，
+                  而是按技术栈拆成独立模块（spring-boot-cache / spring-boot-jdbc /
+                  spring-boot-data-redis …）。spring-boot-autoconfigure-4.0.0.jar 内
+                  **完全没有 Flyway 相关类**，所以只加 flyway-core 不会生效 ——
+                  必须引入 spring-boot-flyway，否则 Flyway 静默不执行（日志里一行都没有）。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-flyway</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+            <version>11.14.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+            <version>11.14.1</version>
+        </dependency>
+
+        <!-- 阶段二 2.2b：Spring Cache 抽象。
+             注意：@EnableCaching 只是开关，真正的 CacheManager 由 CacheAutoConfiguration 提供，
+             而它来自本 starter —— spring-boot-starter-data-redis 并不自带。
+             缺了它启动会报 "No qualifying bean of type 'CacheManager'"。 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
         </dependency>
         <dependency>
             <groupId>com.github.librepdf</groupId>
@@ -194,6 +254,45 @@
                         </exclude>
                     </excludes>
                 </configuration>
+            </plugin>
+
+            <!-- 阶段三 3.3：代码覆盖率报告 + 门槛 -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+                <executions>
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals><goal>prepare-agent</goal></goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals><goal>report</goal></goals>
+                    </execution>
+                    <!-- 覆盖率门槛：绑默认 verify 阶段（mvnw test 不触发，mvnw verify / CI 才校验）
+                         起步 25% —— 当前实测 27.5%，留一点缓冲。
+                         设太高（如 90%）会催生"为凑数而写的无意义断言"，反而降低测试价值。 -->
+                    <execution>
+                        <id>check</id>
+                        <goals><goal>check</goal></goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.25</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
