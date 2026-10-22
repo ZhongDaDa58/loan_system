@@ -38,13 +38,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private LoanApplicationMapper loanApplicationMapper;
 
-    /** 多模型评分（v3/v4/v4-fusion，支持多源特征），用于让多源数据进入申请决策 */
-    @Resource
-    private LoanProductService loanProductService;
-
-    @Resource
-    private MonthlyRepaymentMapper monthlyRepaymentMapper;
-
     @Resource
     private FeatureTransformationService featureTransformationService;
 
@@ -65,9 +58,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private CreditScoreSyncService creditScoreSyncService;
 
-    @Resource
-    private UserBankCardMapper userBankCardMapper;
-
     /** 阶段 3：规则引擎接入申请链路（规则默认停用 → 无命中 → 审批行为与接入前一致） */
 
 
@@ -86,9 +76,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     private com.loan.metrics.RiskMetrics riskMetrics;
 
     /** 多源档案（供规则上下文使用非传统数据） */
-
-    @Resource
-    private SysUserMapper sysUserMapper;
 
     /** 阶段四 4.3：幂等控制（防连点重复提交） */
     @Resource
@@ -310,43 +297,15 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         log.info("📝 用户 {} 提交贷款申请（使用基础信息）: 产品={}, 金额={}, 期限={}",
                 userId, basicInfo.getProductId(), basicInfo.getApplyAmount(), basicInfo.getApplyTerm());
 
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null || user.getKycStatus() == null || user.getKycStatus() != 1) {
-            throw new BusinessException(403, "您尚未完成实名认证，请先进行身份认证后再申请贷款");
-        }
-
-        List<MonthlyRepayment> overdueRecords = monthlyRepaymentMapper.selectOverdueByUserId(userId);
-        if (!overdueRecords.isEmpty()) {
-            throw new BusinessException(400, "您有" + overdueRecords.size() + "笔逾期未还款记录，请先结清欠款后再申请");
-        }
-
-        LoanProduct product = loanProductService.validateProduct(basicInfo.getProductId());
-
-        BigDecimal applyAmount = basicInfo.getApplyAmount();
-        Integer applyTerm = basicInfo.getApplyTerm();
-        if (applyAmount.compareTo(product.getMinAmount()) < 0 || applyAmount.compareTo(product.getMaxAmount()) > 0) {
-            throw new BusinessException(400, "申请金额需在" + product.getMinAmount() + "-" + product.getMaxAmount() + "元之间");
-        }
-        if (applyTerm < product.getMinTerm() || applyTerm > product.getMaxTerm()) {
-            throw new BusinessException(400, "申请期限需在" + product.getMinTerm() + "-" + product.getMaxTerm() + "月之间");
-        }
-
-        Long disbursementCardId = basicInfo.getDisbursementCardId();
-        if (disbursementCardId != null) {
-            UserBankCard bankCard = userBankCardMapper.selectById(disbursementCardId);
-            if (bankCard == null) {
-                throw new BusinessException(400, "指定的银行卡不存在");
-            }
-            if (!userId.equals(bankCard.getUserId())) {
-                throw new BusinessException(400, "无权使用该银行卡作为放款账户");
-            }
-            if (!"ACTIVE".equals(bankCard.getBindStatus())) {
-                throw new BusinessException(400, "该银行卡已解绑，请选择其他卡片");
-            }
-            log.info("✅ 用户指定放款银行卡: {}", bankCard.getAliasName());
-        } else {
-            log.info("ℹ️ 用户未指定放款银行卡，将使用默认卡");
-        }
+        // 阶段四 4.2 第 9 步：基础准入校验与 submitApply 共用同一实现
+        // （此前是两份逐字相同的代码，8 个 throw 点、8 段提示文案都要两处同改）
+        ApplicationEligibilityChecker.BasicEligibility base = eligibilityChecker.checkBasics(
+                userId, basicInfo.getProductId(), basicInfo.getApplyAmount(), basicInfo.getApplyTerm(),
+                basicInfo.getDisbursementCardId());
+        LoanProduct product = base.product();
+        BigDecimal applyAmount = base.applyAmount();
+        Integer applyTerm = base.applyTerm();
+        Long disbursementCardId = base.disbursementCardId();
 
         List<String> validationErrors = dataValidationService.validateInputData(basicInfo);
         if (!validationErrors.isEmpty()) {

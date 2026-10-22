@@ -85,12 +85,31 @@ public class ApplicationEligibilityChecker {
     }
 
     /**
-     * 执行准入校验；不通过直接抛 {@link BusinessException}。
+     * 基础准入校验的结果（不含信用档案）。
+     *
+     * <p>"提交完整信息"链路（{@code submitApplyWithBasicInfo}）用这个 ——
+     * 它的特征来自用户填写的 {@code UserBasicInfoDTO}，不需要读信用档案。
+     */
+    public record BasicEligibility(
+            LoanProduct product,
+            BigDecimal applyAmount,
+            Integer applyTerm,
+            Long disbursementCardId) {
+    }
+
+    /**
+     * 基础准入校验：身份 → 逾期 → 产品/金额/期限 → 银行卡。
+     *
+     * <p><b>两条申请链路共用这一段</b>（{@code submitApply} 与
+     * {@code submitApplyWithBasicInfo}）—— 此前是两份逐字相同的代码，
+     * 8 个 throw 点、8 段提示文案都得两处同改，很容易改漏一处导致行为不一致。
      *
      * @throws BusinessException 403 —— 未实名认证
-     * @throws BusinessException 400 —— 逾期未结清 / 金额期限越界 / 银行卡无效 / 无信用档案
+     * @throws BusinessException 400 —— 逾期未结清 / 金额期限越界 / 银行卡无效
      */
-    public Eligibility check(String userId, LoanApplyDTO applyDTO) {
+    public BasicEligibility checkBasics(String userId, String productId,
+                                        BigDecimal applyAmount, Integer applyTerm,
+                                        Long disbursementCardId) {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null || user.getKycStatus() == null || user.getKycStatus() != 1) {
             throw new BusinessException(403, "您尚未完成实名认证，请先进行身份认证后再申请贷款");
@@ -101,10 +120,8 @@ public class ApplicationEligibilityChecker {
             throw new BusinessException(400, "您有" + overdueRecords.size() + "笔逾期未还款记录，请先结清欠款后再申请");
         }
 
-        LoanProduct product = loanProductService.validateProduct(applyDTO.getProductId());
+        LoanProduct product = loanProductService.validateProduct(productId);
 
-        BigDecimal applyAmount = applyDTO.getApplyAmount();
-        Integer applyTerm = applyDTO.getApplyTerm();
         if (applyAmount.compareTo(product.getMinAmount()) < 0 || applyAmount.compareTo(product.getMaxAmount()) > 0) {
             throw new BusinessException(400, "申请金额需在" + product.getMinAmount() + "-" + product.getMaxAmount() + "元之间");
         }
@@ -112,7 +129,6 @@ public class ApplicationEligibilityChecker {
             throw new BusinessException(400, "申请期限需在" + product.getMinTerm() + "-" + product.getMaxTerm() + "月之间");
         }
 
-        Long disbursementCardId = applyDTO.getDisbursementCardId();
         if (disbursementCardId != null) {
             UserBankCard bankCard = userBankCardMapper.selectById(disbursementCardId);
             if (bankCard == null) {
@@ -129,6 +145,26 @@ public class ApplicationEligibilityChecker {
             log.info("ℹ️ 用户未指定放款银行卡，将使用默认卡");
         }
 
+        return new BasicEligibility(product, applyAmount, applyTerm, disbursementCardId);
+    }
+
+    /**
+     * 完整准入校验 = 基础校验 + 信用档案存在性。
+     *
+     * <p>{@code submitApply} 用这个：它不接收用户填写的特征，而是从信用档案读取
+     * （"一次填写、后续复用"）。所以必须先确认档案存在且有评分。
+     *
+     * @throws BusinessException 403 —— 未实名认证
+     * @throws BusinessException 400 —— 逾期未结清 / 金额期限越界 / 银行卡无效 / 无信用档案
+     */
+    public Eligibility check(String userId, LoanApplyDTO applyDTO) {
+        BasicEligibility basics = checkBasics(
+                userId,
+                applyDTO.getProductId(),
+                applyDTO.getApplyAmount(),
+                applyDTO.getApplyTerm(),
+                applyDTO.getDisbursementCardId());
+
         // 从信用档案读取个人特征数据（无需重复填写）
         UserCreditProfile creditProfile = userCreditProfileMapper.selectByUserId(userId);
         if (creditProfile == null || creditProfile.getCreditScore() == null) {
@@ -137,6 +173,7 @@ public class ApplicationEligibilityChecker {
 
         UserProfileDTO userProfile = ScorecardDetailAssembler.buildUserProfileFromProfile(creditProfile);
 
-        return new Eligibility(product, applyAmount, applyTerm, disbursementCardId, creditProfile, userProfile);
+        return new Eligibility(basics.product(), basics.applyAmount(), basics.applyTerm(),
+                basics.disbursementCardId(), creditProfile, userProfile);
     }
 }
