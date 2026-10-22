@@ -1,0 +1,80 @@
+name: CI
+
+# 为什么用 GitHub Actions 而不是只有本地 ci.ps1：
+#   本地脚本只能保证「我这台机器能构建」。换台机器（或代码被别人接手）就没有保障了。
+#   CI 的意义是**把构建标准固化在仓库里**，任何人 push 都会自动验证。
+#
+# 本项目的 ci.ps1 仍然保留 —— 它多了 `docker build` 和 Windows 环境验证，
+# 两者互补：CI 保证"Linux + 干净环境"能过，ci.ps1 保证"本机 + 镜像构建"能过。
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  # 支持手动触发（例如想在不提交的情况下验证 CI 是否能过）
+  workflow_dispatch:
+
+# 同一分支的新 push 会自动取消上一次未跑完的运行，省 Actions 额度
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: 构建 + 测试 + 覆盖率门槛
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 缓存 ~/.m2/repository，key 跟 pom.xml 的 hash 绑定
+      # pom 变了就重新下载，没变就直接命中（省 1~2 分钟）
+      - name: 缓存 Maven 依赖
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-m2-
+
+      # 保险：仓库里的 mvnw 应该已经是 100755，但 clone 后的权限可能被文件系统影响
+      - name: 确保 mvnw 可执行
+        run: chmod +x mvnw
+
+      # `verify` = compile + test + jacoco:check（覆盖率门槛 25%）
+      # 集成测试用 Testcontainers → 需要 Docker。
+      # GitHub Actions 的 ubuntu-latest **自带 Docker**，所以会真跑，不会被 disabledWithoutDocker 跳过。
+      - name: 构建并运行全部测试（含覆盖率门槛）
+        run: ./mvnw -B --no-transfer-progress verify
+
+      # 测试挂了要能看原因，不然只知道"红了"
+      - name: 上传测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-reports
+          path: target/surefire-reports/
+          retention-days: 7
+
+      - name: 上传覆盖率报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-report
+          path: target/site/jacoco/
+          retention-days: 7
+
+      # 只在 master 分支验证 Dockerfile —— PR 里跳过，避免每次 PR 都多花几分钟
+      # 目的：防止 Dockerfile 悄悄腐化（比如依赖的 jar 路径变了却没人发现）
+      - name: 验证 Docker 镜像可构建（仅 master）
+        if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+        run: docker build -t loan-app:ci .
