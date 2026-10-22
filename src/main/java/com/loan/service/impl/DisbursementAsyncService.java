@@ -71,7 +71,19 @@ public class DisbursementAsyncService {
             transactionMapper.updateStatus(txnId, "SUCCESS", null, null, before, after);
 
             // 更新贷款申请状态为"已放款"
-            loanApplicationMapper.updateStatus(applicationId, "ISSUED");
+            // 阶段四 4.3 补：条件更新 —— 只有当前仍是 approved 才更新。
+            // 异步任务里**不抛异常**：此时钱已经加到卡上了（上一行 updateBalance 已提交），
+            // 抛出去只会把流水标成 FAILED，反而误导「没放款」。正确做法是记 error 告警，
+            // 由人工核对（钱出去了但状态没更新 = 需要介入的数据不一致）。
+            int statusRows = loanApplicationMapper.updateStatusIfCurrent(
+                    applicationId,
+                    com.loan.entity.enums.ApplicationStatusEnum.APPROVED.getCode(),
+                    "ISSUED");
+            if (statusRows != 1) {
+                log.error("🔴 放款成功但申请状态更新失败（可能已被并发放款）: "
+                                + "txnId={}, applicationId={}, 金额={} —— 需人工核对账目",
+                        txnId, applicationId, amount);
+            }
 
             log.info("✅ 异步放款完成 txnId={}, applicationId={}", txnId, applicationId);
 

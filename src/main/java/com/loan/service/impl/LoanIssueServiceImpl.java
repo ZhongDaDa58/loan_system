@@ -122,9 +122,17 @@ public class LoanIssueServiceImpl implements LoanIssueService {
             throw new BusinessException(500, "账户余额更新失败");
         }
 
-        int updateAppStatusRows = loanApplicationMapper.updateStatus(applicationId, ApplicationStatusEnum.ISSUED.getCode());
+        // ⚠️ 顺序很重要（阶段四 4.3 补）：先申请状态抢占，再插放款记录。
+        //    原来是「先加余额 → 后插记录」，并发时余额已被加两次才可能在 insert 处冲突。
+        //    现在：条件更新抢状态 → 唯一索引兜底 → 任何一个失败都让整个事务回滚（含余额）。
+        int updateAppStatusRows = loanApplicationMapper.updateStatusIfCurrent(
+                applicationId,
+                ApplicationStatusEnum.APPROVED.getCode(),
+                ApplicationStatusEnum.ISSUED.getCode());
         if (updateAppStatusRows != 1) {
-            throw new BusinessException(500, "申请状态更新失败");
+            // 0 行 = 申请已不是 approved（已被他人放款或状态被改）→ 整个事务回滚，余额不会重复加
+            log.warn("⚠️ 放款抢占失败，申请状态已变更: applicationId={}", applicationId);
+            throw new BusinessException(400, "该申请已放款或状态已变更，请刷新后重试");
         }
 
         LoanIssue loanIssue = new LoanIssue();
@@ -135,7 +143,14 @@ public class LoanIssueServiceImpl implements LoanIssueService {
         loanIssue.setIssueStatus(IssueStatusEnum.SUCCESS.getCode());
         loanIssue.setIssueTime(new Date());
         loanIssue.setDisbursementCardId(disbursementCardId);
-        loanIssueMapper.insert(loanIssue);
+        try {
+            loanIssueMapper.insert(loanIssue);
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            // 唯一索引 uk_issue_application_id 兜底：并发时只有一个能插进去。
+            // 抛出去让 @Transactional(rollbackFor = Exception.class) 回滚 —— 余额更新一并撤销。
+            log.warn("⚠️ 放款记录唯一键冲突（并发重复放款已被拦截）: applicationId={}", applicationId);
+            throw new BusinessException(400, "该申请已放款，无需重复操作");
+        }
 
         generateRepaymentPlan(application, issueAmount);
 
@@ -150,8 +165,9 @@ public class LoanIssueServiceImpl implements LoanIssueService {
             // 注意：这里通常不回滚放款，因为钱已经出去了，但需要人工介入处理合同问题
         }
 
-        // 5. 更新申请状态为“已放款”
-        loanApplicationMapper.updateStatus(applicationId, "issued");
+        // 5. 申请状态已在步骤 4 用条件更新置为 issued（那里是抢占点）。
+        //    原来这里还有一次 updateStatus(applicationId, "issued") —— 冗余，已删除：
+        //    状态已是 issued 再无条件更新一次，既无用又掩盖了「抢占失败」的信号。
 
         // 6. 发送放款成功通知
         try {
