@@ -244,30 +244,8 @@ public final class ScorecardDetailAssembler {
         }
     }
 
-    // ==================== 领域对象转换（阶段四 4.2 第 5 步补） ====================
+    // ==================== 领域对象转换（4.5 起：档案→评分入参改用 MapStruct） ====================
 
-    /**
-     * 从信用档案实体构建评分卡入参。
-     *
-     * <p><b>为什么给默认值</b>：评分卡对每个特征都有固定 WOE 分箱，缺值时无法落箱。
-     * 用"业务上最保守的中性值"填充（年龄 18 = 最低可申请年龄、利用率和负债率 0 = 无负担），
-     * 可以让模型仍然输出分数，而不是直接崩掉或返回 null。
-     *
-     * <p><b>注意</b>：这只是"让流程能走下去"的兜底，不代表数据真实。
-     * 真正缺数据的情况由 {@code RuleEvaluationService#missingRequiredMultiSources}
-     * 显式暴露并转人工（避免静默放行）。
-     */
-    public static com.loan.entity.dto.UserProfileDTO buildUserProfileFromProfile(
-            com.loan.entity.UserCreditProfile profile) {
-        com.loan.entity.dto.UserProfileDTO userProfile = new com.loan.entity.dto.UserProfileDTO();
-        userProfile.setRevolvingUtil(profile.getRevolvingUtil() != null ? profile.getRevolvingUtil() : BigDecimal.ZERO);
-        userProfile.setAge(profile.getAge() != null ? profile.getAge() : 18);
-        userProfile.setDebtRatio(profile.getDebtRatio() != null ? profile.getDebtRatio() : BigDecimal.ZERO);
-        userProfile.setMonthlyIncome(profile.getMonthlyIncome());
-        userProfile.setCreditLines(profile.getCreditLines() != null ? profile.getCreditLines() : 0);
-        userProfile.setDependents(profile.getDependents() != null ? profile.getDependents() : 0);
-        return userProfile;
-    }
 
     /**
      * 枚举 → 数据库存的决策码。

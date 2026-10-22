@@ -66,6 +66,10 @@ public class LoanApplicationQueryService {
     @Resource
     private UserIdentityMapper userIdentityMapper;
 
+    /** 阶段四 4.5：MapStruct 生成的转换（申请实体 → 审批端基本信息 VO） */
+    @Resource
+    private com.loan.convert.LoanApplicationBasicMapper basicMapper;
+
     // ==================== 用户进度 ====================
 
     public Result<List<LoanApplicationVO>> queryApplyProgress(String userId) {
@@ -118,22 +122,12 @@ public class LoanApplicationQueryService {
             throw new BusinessException(404, "申请不存在");
         }
 
-        LoanApplicationBasicVO basicVO = new LoanApplicationBasicVO();
-
-        basicVO.setApplicationId(application.getApplicationId());
-        basicVO.setUserId(application.getUserId());
-        basicVO.setProductId(application.getProductId());
-        basicVO.setApplyAmount(application.getApplyAmount());
-        // S4c：批准金额（规则降额后的最终放款额；未降额时为 null）
-        basicVO.setApprovedAmount(application.getApprovedAmount());
-        basicVO.setApplyTerm(application.getApplyTerm());
-        basicVO.setScorecardScore(application.getScorecardScore());
-        basicVO.setScorecardDecision(application.getScorecardDecision());
-        basicVO.setApplicationStatus(application.getApplicationStatus());
-        basicVO.setStatusDesc(application.getStatusDesc());
-        basicVO.setApplyTime(application.getApplyTime());
-        basicVO.setUpdateTime(application.getUpdateTime());
-        basicVO.setDisbursementCardId(application.getDisbursementCardId());
+        // 阶段四 4.5：13 个同名字段改用 MapStruct 生成（编译期校验，漏字段会编译报错）
+        // ── 映射了：applicationId / userId / productId / applyAmount / approvedAmount /
+        //            applyTerm / scorecardScore / scorecardDecision / applicationStatus /
+        //            statusDesc / applyTime / updateTime / disbursementCardId
+        // ⚠️ approvedAmount 语义（S4c）：规则降额后的最终放款额；未降额时为 null
+        LoanApplicationBasicVO basicVO = basicMapper.toVo(application);
 
         LoanProduct product = loanProductService.validateProduct(application.getProductId());
         if (product != null) {

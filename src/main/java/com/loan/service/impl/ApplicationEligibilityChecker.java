@@ -63,6 +63,10 @@ public class ApplicationEligibilityChecker {
     @Resource
     private UserCreditProfileMapper userCreditProfileMapper;
 
+    /** 阶段四 4.5：MapStruct 生成的转换（编译期生成实现类） */
+    @Resource
+    private com.loan.convert.UserProfileMapper userProfileMapper;
+
     /**
      * 校验通过后的上下文。
      *
@@ -171,7 +175,8 @@ public class ApplicationEligibilityChecker {
             throw new BusinessException(400, "请先创建信用档案，完善个人信息后再申请贷款");
         }
 
-        UserProfileDTO userProfile = ScorecardDetailAssembler.buildUserProfileFromProfile(creditProfile);
+        // 阶段四 4.5：改用 MapStruct 生成的转换（编译期生成，字段名不一致会编译报错）
+        UserProfileDTO userProfile = userProfileMapper.toDto(creditProfile);
 
         return new Eligibility(basics.product(), basics.applyAmount(), basics.applyTerm(),
                 basics.disbursementCardId(), creditProfile, userProfile);
