@@ -109,6 +109,10 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private CreditProfileAutoSaveService creditProfileAutoSaveService;
 
+    /** 阶段四 4.2：申请准入校验（KYC / 逾期 / 金额期限 / 银行卡 / 信用档案） */
+    @Resource
+    private ApplicationEligibilityChecker eligibilityChecker;
+
     /** 阶段四 4.2：申请查询（只读职责，与提交流程分离） */
     @Resource
     private LoanApplicationQueryService queryService;
@@ -142,51 +146,15 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         log.info("📝 用户 {} 提交贷款申请: 产品={}, 金额={}, 期限={}",
                 userId, applyDTO.getProductId(), applyDTO.getApplyAmount(), applyDTO.getApplyTerm());
 
-        SysUser user = sysUserMapper.selectById(userId);
-        if (user == null || user.getKycStatus() == null || user.getKycStatus() != 1) {
-            throw new BusinessException(403, "您尚未完成实名认证，请先进行身份认证后再申请贷款");
-        }
-
-        List<MonthlyRepayment> overdueRecords = monthlyRepaymentMapper.selectOverdueByUserId(userId);
-        if (!overdueRecords.isEmpty()) {
-            throw new BusinessException(400, "您有" + overdueRecords.size() + "笔逾期未还款记录，请先结清欠款后再申请");
-        }
-
-        LoanProduct product = loanProductService.validateProduct(applyDTO.getProductId());
-
-        BigDecimal applyAmount = applyDTO.getApplyAmount();
-        Integer applyTerm = applyDTO.getApplyTerm();
-        if (applyAmount.compareTo(product.getMinAmount()) < 0 || applyAmount.compareTo(product.getMaxAmount()) > 0) {
-            throw new BusinessException(400, "申请金额需在" + product.getMinAmount() + "-" + product.getMaxAmount() + "元之间");
-        }
-        if (applyTerm < product.getMinTerm() || applyTerm > product.getMaxTerm()) {
-            throw new BusinessException(400, "申请期限需在" + product.getMinTerm() + "-" + product.getMaxTerm() + "月之间");
-        }
-
-        Long disbursementCardId = applyDTO.getDisbursementCardId();
-        if (disbursementCardId != null) {
-            UserBankCard bankCard = userBankCardMapper.selectById(disbursementCardId);
-            if (bankCard == null) {
-                throw new BusinessException(400, "指定的银行卡不存在");
-            }
-            if (!userId.equals(bankCard.getUserId())) {
-                throw new BusinessException(400, "无权使用该银行卡作为放款账户");
-            }
-            if (!"ACTIVE".equals(bankCard.getBindStatus())) {
-                throw new BusinessException(400, "该银行卡已解绑，请选择其他卡片");
-            }
-            log.info("✅ 用户指定放款银行卡: {}", bankCard.getAliasName());
-        } else {
-            log.info("ℹ️ 用户未指定放款银行卡，将使用默认卡");
-        }
-
-        // 从信用档案读取个人特征数据（无需重复填写）
-        UserCreditProfile creditProfile = userCreditProfileMapper.selectByUserId(userId);
-        if (creditProfile == null || creditProfile.getCreditScore() == null) {
-            throw new BusinessException(400, "请先创建信用档案，完善个人信息后再申请贷款");
-        }
-
-        UserProfileDTO userProfile = ScorecardDetailAssembler.buildUserProfileFromProfile(creditProfile);
+        // 阶段四 4.2 第 6 步：准入校验已移到 ApplicationEligibilityChecker
+        // （KYC / 逾期 / 金额期限 / 银行卡 / 信用档案，8 个 throw 点类型与文案原样保留）
+        ApplicationEligibilityChecker.Eligibility elig = eligibilityChecker.check(userId, applyDTO);
+        LoanProduct product = elig.product();
+        BigDecimal applyAmount = elig.applyAmount();
+        Integer applyTerm = elig.applyTerm();
+        Long disbursementCardId = elig.disbursementCardId();
+        UserCreditProfile creditProfile = elig.creditProfile();
+        UserProfileDTO userProfile = elig.userProfile();
 
         // 提前生成申请 ID：规则评估需要按申请单写入命中流水
         String applicationId = IdUtil.generateId();
