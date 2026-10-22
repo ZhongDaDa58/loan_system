@@ -172,7 +172,8 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         }
 
         log.info("🔍 开始评分（优先多源多模型，多源不足时回落单模型）...");
-        ScoreOutcome scoreOutcome = calculateScorePreferMultiSource(userId, userProfile);
+        com.loan.service.ScorecardRoutingService.ScoreOutcome scoreOutcome =
+                scorecardRoutingService.score(userId, userProfile);
         Integer scorecardScore = scoreOutcome.score();
         log.info("✅ 评分完成，得分: {}，模型: {}，来源: {}，缺失特征: {}/{}",
                 scorecardScore, scoreOutcome.modelKey(), scoreOutcome.source(),
@@ -360,7 +361,8 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         UserProfileDTO userProfile = transformationResult.getUserProfile();
 
         log.info("🔍 开始评分（优先多源多模型，多源不足时回落单模型）...");
-        ScoreOutcome scoreOutcome = calculateScorePreferMultiSource(userId, userProfile);
+        com.loan.service.ScorecardRoutingService.ScoreOutcome scoreOutcome =
+                scorecardRoutingService.score(userId, userProfile);
         Integer scorecardScore = scoreOutcome.score();
         log.info("✅ 评分完成，得分: {}，模型: {}，来源: {}，缺失特征: {}/{}",
                 scorecardScore, scoreOutcome.modelKey(), scoreOutcome.source(),
@@ -468,35 +470,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
         } catch (Exception e) {
             log.warn("⚠️ 合同草稿生成失败（不影响申请，签约时会重试）: {} - {}", applicationId, e.getMessage());
         }
-    }
-
-    /**
-     * 评分（优先「多源特征 + 多模型」；多源覆盖不足时回落单模型）
-     *
-     * 目的：让已同步的多源数据（征信/运营商/设备）真正进入申请决策。
-     * 保护：未授权/未同步多源的用户仍走原有单模型 v3，行为与接入前一致。
-     */
-    private ScoreOutcome calculateScorePreferMultiSource(String userId, UserProfileDTO userProfile) {
-        // 【口径统一 · P-030】委托给 ScorecardRoutingService —— 与建档链路共用同一实现。
-        // 此前本方法是 ScorecardRoutingServiceImpl.score() 的逐行复制版，任何策略调整
-        // （如"多源覆盖不足回落 v3"的判据）都必须两处同改，否则档案分与申请分再次分裂。
-        com.loan.service.ScorecardRoutingService.ScoreOutcome routed =
-                scorecardRoutingService.score(userId, userProfile);
-        // 转换为本链路的内嵌 ScoreOutcome（字段一一对应，仅为兼容既有调用点）
-        return new ScoreOutcome(routed.score(), routed.modelKey(), routed.modelVersion(),
-                routed.missingFeatures(), routed.requiredFeatures(), routed.source());
-    }
-
-    /** 仅当目标特征缺失时补齐（保持多源链路给出的值优先） */
-    private void fillIfAbsent(Map<String, Object> features, String key, Object value) {
-        if (features.get(key) == null && value != null) {
-            features.put(key, value);
-        }
-    }
-
-    /** 评分结果及来源（用于日志与决策留痕追溯） */
-    private record ScoreOutcome(Integer score, String modelKey, String modelVersion,
-                                Integer missingFeatures, Integer requiredFeatures, String source) {
     }
 
     @Override
