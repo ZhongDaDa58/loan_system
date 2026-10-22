@@ -20,9 +20,15 @@ public class AdminController {
     @Resource
     private SysUserService sysUserService;
 
+    /** 阶段四 4.4：登录限流（防暴力破解） */
+    @Resource
+    private com.loan.service.RateLimitService rateLimitService;
+
     @PostMapping("/login")
     @Operation(summary = "Web 管理端登录", description = "仅审核员可登录（role=admin），普通用户无法登录")
     public Result<?> adminLogin(@Valid @RequestBody UserLoginDTO loginDTO) {
+        // 阶段四 4.4：管理员账号是高价值目标 → 更严的配额（3 次 / 10 分钟）
+        rateLimitService.checkAdminLogin(loginDTO.getPhone());
         return sysUserService.adminLogin(loginDTO);
     }
     @PostMapping("/register")

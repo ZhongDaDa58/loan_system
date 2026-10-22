@@ -26,9 +26,15 @@ public class SysUserController {
         return sysUserService.register(registerDTO);
     }
 
+    /** 阶段四 4.4：登录限流（防暴力破解） */
+    @Resource
+    private com.loan.service.RateLimitService rateLimitService;
+
     @PostMapping("/login")
     @Operation(summary = "用户登录", description = "普通用户和审批者通用登录接口")
     public Result<?> login(@Valid @RequestBody UserLoginDTO loginDTO) {
+        // 阶段四 4.4：同一手机号 5 分钟内最多 5 次登录尝试
+        rateLimitService.checkLogin(loginDTO.getPhone());
         return sysUserService.login(loginDTO);
     }
 
