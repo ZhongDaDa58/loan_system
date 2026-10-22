@@ -43,6 +43,10 @@ public class AuditServiceImpl implements AuditService {
     @Resource
     private LoanApplicationMapper loanApplicationMapper;
 
+    /** 阶段四 4.3 补：幂等控制（防审核提交重复投递） */
+    @Resource
+    private com.loan.service.IdempotencyService idempotencyService;
+
     @Resource
     private ContractService contractService; // ⭐ 注入合同服务
 
@@ -73,13 +77,17 @@ public class AuditServiceImpl implements AuditService {
 
     @Override
     public Result<?> submitAudit(AuditSubmitDTO auditDTO, String auditorId) {
+        // 阶段四 4.3 补：幂等检查（第 ② 层，防同一审核员重复投递）
+        // 注意：幂等键只防"同一请求重放"，真正的并发防护在下面的条件更新
+        idempotencyService.acquire("audit", auditorId);
+
         // 1. 校验申请是否存在
         LoanApplication application = loanApplicationMapper.selectByApplicationId(auditDTO.getApplicationId());
         if (application == null) {
             throw new BusinessException(400, "贷款申请不存在");
         }
 
-        // 2. 校验申请状态是否为待审核
+        // 2. 校验申请状态是否为待审核（快路径：先给友好提示，真正的并发防护在步骤 5）
         if (!ApplicationStatusEnum.PENDING.getCode().equals(application.getApplicationStatus())) {
             throw new BusinessException(400, "该申请已审核，无需重复操作");
         }
@@ -100,10 +108,19 @@ public class AuditServiceImpl implements AuditService {
             default -> throw new BusinessException(400, "未知审核结果");
         };
 
-        // 5. 更新贷款申请状态
-        int updateRows = loanApplicationMapper.updateStatus(auditDTO.getApplicationId(), applicationStatus);
+        // 5. 更新贷款申请状态（★ 条件更新：只有当前仍是 pending 才更新）
+        //    为什么不用 updateStatus：它是"先读后写"，两个审核员并发提交时
+        //    都能通过步骤 2 的检查，然后互相覆盖（还会插两条 audit_record）。
+        //    这里把"检查 + 更新"压成一条原子 SQL，靠影响行数判断谁抢到。
+        int updateRows = loanApplicationMapper.updateStatusIfCurrent(
+                auditDTO.getApplicationId(),
+                ApplicationStatusEnum.PENDING.getCode(),
+                applicationStatus);
         if (updateRows != 1) {
-            throw new BusinessException(500, "审核结果提交失败，请重试");
+            // 0 行 = 状态已被他人改变（并发提交，或步骤 2 之后被别人抢先）
+            log.warn("⚠️ 审核状态更新失败，可能已被他人处理: applicationId={}, auditorId={}",
+                    auditDTO.getApplicationId(), auditorId);
+            throw new BusinessException(400, "该申请已被他人审核，请刷新后重试");
         }
 
         // 6. 保存审核记录

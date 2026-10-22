@@ -77,6 +77,15 @@
         WHERE application_id = #{applicationId}
     </update>
 
+    <!-- 条件更新（乐观锁）：靠 WHERE 里的状态条件保证"检查+更新"原子，
+         返回 0 表示状态已被他人改变（并发提交时只有一个能成功） -->
+    <update id="updateStatusIfCurrent">
+        UPDATE loan_application
+        SET application_status = #{status}, update_time = CURRENT_TIMESTAMP
+        WHERE application_id = #{applicationId}
+          AND application_status = #{expectedStatus}
+    </update>
+
     <select id="selectApplyAmountByApplicationId" resultType="java.math.BigDecimal">
         <!-- P-025：优先返回「批准金额」（规则 DOWNGRADE 降额后的最终放款额）；
              未降额时为 NULL，回退到申请金额 —— 保证现有行为不变 -->

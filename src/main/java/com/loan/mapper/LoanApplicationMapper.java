@@ -23,6 +23,26 @@ public interface LoanApplicationMapper {
     // 更新申请状态
     int updateStatus(@Param("applicationId") String applicationId, @Param("status") String status);
 
+    /**
+     * 条件更新状态（乐观锁）：只有当前状态仍等于 {@code expectedStatus} 时才更新。
+     *
+     * <p><b>为什么需要它</b>：{@link #updateStatus} 只按 applicationId 更新，
+     * 是"先读后写"模式 —— 两个审核员同时提交时，会出现：
+     * <pre>
+     * 线程A: 读 status=pending  线程B: 读 status=pending    ← 都通过校验
+     * 线程A: UPDATE → approved  线程B: UPDATE → rejected    ← B 覆盖了 A
+     * </pre>
+     * 结果：申请被审两次、`audit_record` 两条、结论以最后写入的为准。
+     *
+     * <p>用条件更新把"检查 + 更新"变成<b>一条原子 SQL</b>，
+     * 靠影响行数判断谁抢到了：返回 0 = 已被他人改变状态。
+     *
+     * @return 影响的期望行数为 1；<b>返回 0 表示状态已被他人改变</b>
+     */
+    int updateStatusIfCurrent(@Param("applicationId") String applicationId,
+                              @Param("expectedStatus") String expectedStatus,
+                              @Param("status") String status);
+
     // 根据申请ID查询申请金额
     BigDecimal selectApplyAmountByApplicationId(@Param("applicationId") String applicationId);
 
