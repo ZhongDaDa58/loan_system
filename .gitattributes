@@ -1,2 +1,10 @@
 /mvnw text eol=lf
 *.cmd text eol=crlf
+# CI 配置与 Shell 脚本必须锁 LF —— 在 Windows 上编辑后提交时，
+# 若不锁，autocrlf 会把它们转成 CRLF，Linux runner 上会报
+#   /bin/bash^M: bad interpreter
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+.dockerignore text eol=lf
