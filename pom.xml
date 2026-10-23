@@ -125,6 +125,18 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- 阶段四 P1：MockMvc 的 web 测试支持。
+             ⚠️ Spring Boot 4.0 把 autoconfigure 拆成了按模块划分的 artifact：
+             spring-boot-starter-test 现在只含「核心」测试支持，
+             @AutoConfigureMockMvc 不在里面（4.0 的 spring-boot-test-autoconfigure
+             里已经没有 web/servlet 包了），必须单独引入 webmvc 的 test starter。
+             不加的症状：编译报「程序包 org.springframework.boot.test.autoconfigure.web.servlet 不存在」 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
         <!-- 阶段三 3.3：Testcontainers 集成测试。
              ⚠️ 为什么必须用真实 MySQL 而不是 H2：
                 本项目有 31 个手写 SQL Mapper，大量使用 MySQL 特有语法
