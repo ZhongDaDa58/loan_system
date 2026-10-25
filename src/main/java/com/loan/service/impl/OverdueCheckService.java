@@ -53,6 +53,26 @@ public class OverdueCheckService {
     private static final int M2_FROM = 31;
     private static final int M3_FROM = 61;
 
+    // ===== 罚息参数（第 3 步）=====
+    // 做成配置项而不是写死：罚息率属监管敏感参数，业务随时可能调。
+    // 日罚息率含义：应还未还金额 × 基础日利率 × 等级倍数，按天累加（单利，不复利）。
+
+    /** 基础日罚息率（默认万分之五 = 0.05%/天，年化约 18%） */
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.daily-rate:0.0005}")
+    private java.math.BigDecimal penaltyDailyRate;
+
+    /** M1 倍数（早期逾期，保持基准） */
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.multiplier.m1:1}")
+    private java.math.BigDecimal penaltyMultiplierM1;
+
+    /** M2 倍数（越拖越贵） */
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.multiplier.m2:1.5}")
+    private java.math.BigDecimal penaltyMultiplierM2;
+
+    /** M3 倍数 */
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.multiplier.m3:3}")
+    private java.math.BigDecimal penaltyMultiplierM3;
+
     @Resource
     private MonthlyRepaymentMapper monthlyRepaymentMapper;
 
@@ -106,6 +126,16 @@ public class OverdueCheckService {
                     r.getRepaymentId(), (int) days, newLevel, levelChanged);
             updated++;
 
+            // ===== 罚息（第 3 步）：按天增量累加，同一天只算一次 =====
+            java.math.BigDecimal penaltyIncrement = calcPenaltyIncrement(r, today, newLevel);
+            if (penaltyIncrement.signum() > 0) {
+                monthlyRepaymentMapper.updatePenalty(
+                        r.getRepaymentId(), penaltyIncrement, today);
+                r.setPenaltyAmount(
+                        (r.getPenaltyAmount() == null ? java.math.BigDecimal.ZERO : r.getPenaltyAmount())
+                                .add(penaltyIncrement));
+            }
+
             // 首次逾期（unpaid → overdue）或等级跃迁时才通知
             boolean firstOverdue = !RepaymentStatusEnum.OVERDUE.getCode()
                     .equals(r.getRepaymentStatus());
@@ -135,6 +165,46 @@ public class OverdueCheckService {
     }
 
     // ==================== 内部 ====================
+
+    /**
+     * 计算本次应新增的罚息（增量）。
+     *
+     * <p><b>公式</b>：{@code 当期应还 × 基础日罚息率 × 等级倍数 × 距上次计算的天数}（单利）。
+     *
+     * <p><b>幂等</b>：靠 {@code penalty_last_calc_date}。
+     * {@code last >= today} 时直接返回 0 —— 同一天第二次调用不会重复计息。
+     *
+     * <p><b>首次计息只算 1 天</b>（{@code last == null}）：这样"上线前就已经逾期很久"的
+     * 存量记录不会突然被追补一大笔罚息（与 V4 迁移"回填不追补罚息"的设计一致）。
+     */
+    private java.math.BigDecimal calcPenaltyIncrement(MonthlyRepayment r,
+                                                      LocalDate today,
+                                                      String level) {
+        if (r.getRepaymentAmount() == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+        LocalDate last = toLocalDate(r.getPenaltyLastCalcDate());
+        long daysToCharge;
+        if (last == null) {
+            daysToCharge = 1;                 // 首次：只算今天
+        } else if (last.isBefore(today)) {
+            daysToCharge = ChronoUnit.DAYS.between(last, today);
+        } else {
+            return java.math.BigDecimal.ZERO;  // 今天已算过（幂等）
+        }
+
+        java.math.BigDecimal multiplier = switch (level) {
+            case "M3" -> penaltyMultiplierM3;
+            case "M2" -> penaltyMultiplierM2;
+            default -> penaltyMultiplierM1;
+        };
+
+        return r.getRepaymentAmount()
+                .multiply(penaltyDailyRate)
+                .multiply(multiplier)
+                .multiply(java.math.BigDecimal.valueOf(daysToCharge))
+                .setScale(2, java.math.RoundingMode.HALF_UP);
+    }
 
     /** 是否还需要扣分：没扣过，或新等级比已扣过的更高 */
     private static boolean needDeductScore(String deductedLevel, String newLevel) {

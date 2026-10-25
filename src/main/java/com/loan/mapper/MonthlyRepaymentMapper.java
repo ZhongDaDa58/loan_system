@@ -55,6 +55,17 @@ public interface MonthlyRepaymentMapper {
                               @Param("levelChanged") boolean levelChanged);
 
     /**
+     * 累加罚息并推进"最后计算日期"（第 3 步）。
+     *
+     * <p><b>增量式 + 幂等</b>：{@code penalty_amount + #{penaltyAmount}} 是累加，
+     * 配合 {@code penalty_last_calc_date} 保证"同一天只算一次" ——
+     * 第二次调用时调用方算出 0，不会进来。
+     */
+    int updatePenalty(@Param("repaymentId") String repaymentId,
+                      @Param("penaltyAmount") java.math.BigDecimal penaltyAmount,
+                      @Param("lastCalcDate") java.time.LocalDate lastCalcDate);
+
+    /**
      * 记录"已扣到哪个等级"—— 逾期扣分的幂等标记。
      *
      * <p>同一期同一等级只能扣一次；靠这个字段判断"要不要扣"，

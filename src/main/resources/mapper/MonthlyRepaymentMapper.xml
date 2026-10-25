@@ -45,6 +45,14 @@
     </select>
 
     <!-- 回写逾期跟踪字段。故意不碰 penalty_amount（罚息在后续步骤单独做，需幂等）。 -->
+    <!-- 累加罚息 + 推进最后计算日期（幂等靠 penalty_last_calc_date） -->
+    <update id="updatePenalty">
+        UPDATE monthly_repayment
+        SET penalty_amount = penalty_amount + #{penaltyAmount},
+            penalty_last_calc_date = #{lastCalcDate}
+        WHERE repayment_id = #{repaymentId}
+    </update>
+
     <!-- 逾期扣分的幂等标记：同一期同一等级只能扣一次 -->
     <update id="updateScoreDeductedLevel">
         UPDATE monthly_repayment
