@@ -52,7 +52,12 @@ public class SecurityConfig {
             "/swagger-ui/**",
             "/v3/api-docs/**",
             // 合同 PDF 静态访问
-            "/contracts/**"
+            "/contracts/**",
+            // AI 客服：Python 服务 → Java 的内部只读接口。
+            // ⚠️ 这里必须 permitAll，因为 Python 带不了用户 JWT；
+            //    真正的准入校验由 CsInternalAuthInterceptor 用共享令牌完成，
+            //    漏了那个拦截器就等于把所有人的账单暴露给任何能访问 8080 的人。
+            "/internal/cs/**"
     };
 
     @Bean

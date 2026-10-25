@@ -41,7 +41,6 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     /** 阶段 3：规则引擎接入申请链路（规则默认停用 → 无命中 → 审批行为与接入前一致） */
 
-
     /** 阶段 C1：活体结果读取（第一层「信息校验先行」信号装配用） */
 
     /** 阶段 C5：设备指纹跨账号检索（第一层信号装配用） */
@@ -82,17 +81,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     @Resource
     private ApplicationPersistService persistService;
 
-
-    /**
-     * 阶段四 4.1：资源归属校验（RBAC 之外的第二个维度）。
-     *
-     * <p><b>为什么需要它</b>：`SecurityConfig` 只保证"这个用户登录了、且不是普通用户访问管理端"，
-     * 但它管不了"这个 applicationId 是不是你的"。没有这层校验时，
-     * 用户 A 传用户 B 的 applicationId 就能看到 B 的合同、还款计划、决策日志。
-     *
-     * <p>调用方：用户端接口（合同下载/状态、还款详情、决策日志）。
-     * 管理端接口不需要 —— 管理员本就该能查全部。
-     */
+    /** 资源归属校验：这个 applicationId 是否属于该用户（RBAC 管不了"是不是你的"，详见文档 §10）。 */
     @Override
     public boolean belongsTo(String applicationId, String userId) {
         if (applicationId == null || applicationId.isBlank() || userId == null || userId.isBlank()) {
@@ -105,34 +94,13 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
     /**
      * 提交贷款申请（信用档案链路）。
      *
-     * <p><b>阶段四 P2：加事务之前的问题</b>
-     * <p>这里原来<b>没有</b> {@code @Transactional} —— 逐条 insert 各自提交，于是会出现"半截"数据：
-     * <ul>
-     *   <li>申请单建好了，但 {@code risk_decision_log} 写失败 → <b>审批详情页拿不到评分依据</b></li>
-     *   <li>{@code risk_rule_hit_log} 写了（L1/L3 各一次），但后面建单失败 → <b>孤儿命中流水</b></li>
-     *   <li>信用分同步失败 → 申请单已存在但档案分没跟上</li>
-     * </ul>
+     * <p><b>事务边界</b>（P2 加的，详细取舍见 `阶段四开发指导.md` §13.4）：
+     * 建单 / 决策日志 / 规则命中 / 信用分同步 → 一起回滚；
+     * 合同 PDF 与 Micrometer 指标 → 不回滚（前者内部 catch，后者语义是"决策发生过"）；
+     * Redis 幂等键 → 回滚时自动释放（{@code IdempotencyService} 的事务同步因此生效）。
      *
-     * <p><b>加事务后的边界（刻意保留不回滚的东西）</b>：
-     * <table border="1">
-     *   <tr><th>操作</th><th>是否回滚</th><th>原因</th></tr>
-     *   <tr><td>建单 / 决策日志 / 规则命中 / 信用分同步</td><td><b>回滚</b></td>
-     *       <td>它们是"这笔申请的一次完整决策"，缺一个就是脏数据</td></tr>
-     *   <tr><td>合同草稿 PDF</td><td><b>不回滚</b></td>
-     *       <td>文件系统不参与事务。但它内部 catch 了异常（尽力而为的预生成），
-     *           且查询进度时会兜底补生成 —— 事务提交了文件在，回滚了文件成孤儿（可清理，不影响业务）</td></tr>
-     *   <tr><td>Micrometer 指标</td><td><b>不回滚</b></td>
-     *       <td>指标的语义是"决策发生过"，回滚后重试会再记一次，比"漏记"更符合监控直觉</td></tr>
-     *   <tr><td>Redis 幂等键</td><td><b>回滚时释放</b></td>
-     *       <td>{@code IdempotencyService} 里注册了 {@code TransactionSynchronization}：
-     *           提交则保留键（真正防重复）、回滚则释放键（用户可立即重试）。
-     *           <b>这段代码早就写好了，但因为本方法没有事务，一直没生效</b> ——
-     *           之前"提交失败后要等 5 分钟才能重试"的遗留问题，由本次加事务一并解决。</td></tr>
-     * </table>
-     *
-     * <p><b>为什么 {@code rollbackFor = Exception.class}</b>：Spring 默认只对 {@code RuntimeException}
-     * 回滚，受检异常不触发。本项目业务异常都是 {@code RuntimeException}（{@code BusinessException}），
-     * 但显式写上能防住将来引入受检异常时的静默漏回滚。
+     * <p>{@code rollbackFor = Exception.class}：Spring 默认只对 {@code RuntimeException} 回滚，
+     * 显式写能防住将来引入受检异常时的静默漏回滚。
      */
     @Override
     @Transactional(rollbackFor = Exception.class)

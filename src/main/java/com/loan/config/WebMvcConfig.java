@@ -1,7 +1,9 @@
 package com.loan.config;
 
+import com.loan.cs.CsAiProperties;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -30,6 +32,13 @@ public class WebMvcConfig implements WebMvcConfigurer {
     @Value("${contract.storage.path:D:/code/loan/contracts/}")
     private String contractStoragePath;
 
+    /** AI 客服服务配置（用于内部接口的共享令牌校验） */
+    private final CsAiProperties csAiProperties;
+
+    public WebMvcConfig(CsAiProperties csAiProperties) {
+        this.csAiProperties = csAiProperties;
+    }
+
     // ===== 阶段四 4.1：鉴权交给 Spring Security，此处不再注册 LoginInterceptor =====
     // 如需回滚，恢复下面这段（并同时把 SecurityConfig 的 anyRequest() 改回 permitAll）：
     //
@@ -44,6 +53,15 @@ public class WebMvcConfig implements WebMvcConfigurer {
     //                     "/api/v1/admin/login", "/api/v1/user/login",
     //                     "/api/v1/products", "/api/v1/file/**");
     // }
+
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        // ===== AI 客服：内部只读接口的服务间准入校验 =====
+        // /internal/cs/** 在 SecurityConfig 里是 permitAll（Python 服务带不了用户 JWT），
+        // 所以必须由这个拦截器校验共享令牌，否则任何人都能伪造 X-CS-User-Id 读别人的账单。
+        registry.addInterceptor(new CsInternalAuthInterceptor(csAiProperties.getServiceToken()))
+                .addPathPatterns("/internal/cs/**");
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
