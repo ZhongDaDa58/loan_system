@@ -27,6 +27,33 @@ public interface MonthlyRepaymentMapper {
      * 根据状态查询还款明细（用于逾期检查）
      */
     List<MonthlyRepayment> selectByStatus(@Param("status") String status);
+
+    /**
+     * 逾期检查的候选集：{@code unpaid} + {@code overdue} 且已过到期日。
+     *
+     * <p><b>为什么不是 {@link #selectByStatus}('unpaid')</b>：
+     * 原来的实现只扫 {@code unpaid}，一旦标记成 {@code overdue} 就<b>再也扫不到</b> ——
+     * 逾期天数从来没被记录过，也就无法做 M1/M2/M3 分级、无法计罚息。
+     * 这是整个逾期体系的地基断点。
+     *
+     * <p>返回天数字段 {@code overdue_days} / {@code overdue_level}，供调用方
+     * 判断"是否需要升级"（只在跃迁时发通知，避免每日骚扰）。
+     */
+    List<MonthlyRepayment> selectOverdueCandidates();
+
+    /**
+     * 回写逾期跟踪字段（天数 / 等级 / 等级跃迁时间）。
+     *
+     * <p>⚠️ 不含罚息 —— 罚息计算在后续步骤单独做（需要幂等，靠
+     * {@code penalty_last_calc_date} 保证每天只计一次）。
+     *
+     * @param levelChanged 等级是否发生跃迁；只有为 true 时才更新 {@code overdue_level_changed_at}
+     */
+    int updateOverdueTracking(@Param("repaymentId") String repaymentId,
+                              @Param("overdueDays") Integer overdueDays,
+                              @Param("overdueLevel") String overdueLevel,
+                              @Param("levelChanged") boolean levelChanged);
+
     // 查询逾期
     List<MonthlyRepayment> selectOverdueByUserId(@Param("userId") String userId);
 

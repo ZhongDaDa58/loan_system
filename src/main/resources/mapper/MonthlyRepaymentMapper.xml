@@ -19,10 +19,42 @@
     <select id="selectById" resultType="com.loan.entity.MonthlyRepayment">
         SELECT
             repayment_id, plan_id, term, principal, interest, repayment_amount,
-            due_date, repayment_status, repayment_time
+            due_date, repayment_status, repayment_time,
+            overdue_days, overdue_level, penalty_amount,
+            penalty_last_calc_date, overdue_level_changed_at, score_deducted_level
         FROM monthly_repayment
         WHERE repayment_id = #{repaymentId}
     </select>
+
+    <!-- ==================== 逾期跟踪（逾期处理功能升级 第 2 步）==================== -->
+
+    <!-- 逾期检查候选集：unpaid + overdue 且已过到期日。
+         ⚠️ 关键：不能只查 'unpaid'。原实现一旦把状态改成 'overdue' 就再也扫不到，
+            导致逾期天数永远不落地 —— 这是整个逾期体系的地基断点。
+         用 due_date < CURDATE() 过滤（当天到期不算逾期，次日才算）。 -->
+    <select id="selectOverdueCandidates" resultType="com.loan.entity.MonthlyRepayment">
+        SELECT
+            repayment_id, plan_id, term, principal, interest, repayment_amount,
+            due_date, repayment_status, repayment_time,
+            overdue_days, overdue_level, penalty_amount,
+            penalty_last_calc_date, overdue_level_changed_at, score_deducted_level
+        FROM monthly_repayment
+        WHERE repayment_status IN ('unpaid', 'overdue')
+          AND due_date &lt; CURDATE()
+        ORDER BY due_date
+    </select>
+
+    <!-- 回写逾期跟踪字段。故意不碰 penalty_amount（罚息在后续步骤单独做，需幂等）。 -->
+    <update id="updateOverdueTracking">
+        UPDATE monthly_repayment
+        SET repayment_status = 'overdue',
+            overdue_days = #{overdueDays},
+            overdue_level = #{overdueLevel}
+            <if test="levelChanged">
+            , overdue_level_changed_at = NOW()
+            </if>
+        WHERE repayment_id = #{repaymentId}
+    </update>
 
     <select id="selectByPlanId" resultType="com.loan.entity.vo.MonthlyRepaymentVO">
         SELECT
