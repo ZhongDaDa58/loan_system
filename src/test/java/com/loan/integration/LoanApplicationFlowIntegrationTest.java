@@ -13,6 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -208,21 +209,51 @@ class LoanApplicationFlowIntegrationTest {
         assertTrue(e.getMessage().contains("申请期限"));
     }
 
+    /**
+     * 有逾期记录 → 拒绝申请。
+     *
+     * <p><b>⚠️ 2026-10-25 重写（原来是"假测试"）</b>：原实现是这样 ——
+     * <pre>
+     * if (存在 overdue_days 列) {
+     *     jdbc.update("INSERT INTO monthly_repayment (repayment_id, user_id, plan_id, ...)");
+     * }
+     * // ← 没有任何断言，插完就结束，根本不验证"是否被拒绝"
+     * </pre>
+     * 两个问题：
+     * <ol>
+     *   <li><b>SQL 列名是猜的</b>（{@code user_id} / {@code status} / {@code create_time} 在
+     *       {@code monthly_repayment} 里都不存在）—— V4 之前那个分支不执行，所以一直没暴露</li>
+     *   <li><b>没有断言</b> —— 即使插进去，也没有验证申请是否被拦，等于什么都没测</li>
+     * </ol>
+     *
+     * <p><b>顺带说明为什么加 {@code @Transactional}</b>：本类有 10 个测试共用 {@code USER_ID}，
+     * 若插入的逾期记录不回滚，后面所有申请测试都会被这条逾期记录拦掉。
+     */
     @Test
-    @DisplayName("有逾期记录 → 拒绝")
+    @Transactional
+    @DisplayName("有逾期记录（M2）→ 拒绝申请")
     void rejectWhenHasOverdue() {
-        // 插一条逾期记录（monthly_repayment 的 overdue 判定由 selectOverdueByUserId 决定）
-        Integer cnt = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM information_schema.COLUMNS "
-                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'monthly_repayment' "
-                        + "AND COLUMN_NAME = 'overdue_days'", Integer.class);
-        // 不同版本表结构可能不同，存在 overdue_days 才构造
-        if (cnt != null && cnt > 0) {
-            jdbc.update("INSERT INTO monthly_repayment "
-                    + "(repayment_id, user_id, plan_id, term, principal, interest, repayment_amount, due_date, status, overdue_days, create_time) "
-                    + "SELECT 'it-overdue-1', ?, plan_id, 1, 100, 10, 110, DATE_SUB(NOW(), INTERVAL 40 DAY), 'UNPAID', 40, NOW() "
-                    + "FROM monthly_repayment LIMIT 1", USER_ID);
-        }
+        // ① 造还款计划（selectOverdueByUserId 要 JOIN repayment_plan 取 user_id）
+        jdbc.update("INSERT INTO repayment_plan "
+                        + "(plan_id, application_id, user_id, total_amount, total_principal, "
+                        + " total_interest, repayment_type, term_count) "
+                        + "VALUES ('it-plan-overdue', 'it-app-overdue', ?, 110.00, 100.00, 10.00, "
+                        + "        'EQUAL_INSTALLMENT', 1)",
+                USER_ID);
+
+        // ② 造一笔 40 天前的逾期明细（V4 后的字段：overdue_days / overdue_level）
+        jdbc.update("INSERT INTO monthly_repayment "
+                        + "(repayment_id, plan_id, term, principal, interest, repayment_amount, "
+                        + " due_date, repayment_status, overdue_days, overdue_level) "
+                        + "VALUES ('it-overdue-1', 'it-plan-overdue', 1, 100.00, 10.00, 110.00, "
+                        + "        DATE_SUB(CURDATE(), INTERVAL 40 DAY), 'overdue', 40, 'M2')");
+
+        // ③ 断言：申请被拒绝，且提示与逾期有关
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> loanApplicationService.submitApply(dto("50000", 12), USER_ID),
+                "有逾期记录时不该允许申请");
+        assertTrue(e.getMessage().contains("逾期"),
+                "提示应提到逾期，实际提示：" + e.getMessage());
     }
 
     // ==================== L1 规则（影子模式）====================
