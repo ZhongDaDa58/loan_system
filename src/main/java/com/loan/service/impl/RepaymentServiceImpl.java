@@ -87,9 +87,23 @@ public class RepaymentServiceImpl implements RepaymentService {
             throw new BusinessException(400, "该期款项已还款或逾期，无需重复操作");
         }
 
-        if (!monthlyRepayment.getRepaymentAmount().equals(submitAmount)) {
-            // 保留实际值便于排查（原为两行无意义调试打印）
-            log.warn("还款金额不一致 submitAmount={} expectedAmount={}", submitAmount, monthlyRepayment.getRepaymentAmount());
+        // 应还金额 = 当期应还 + 罚息（逾期处理升级第 3 步-b）
+        //
+        // 罚息由 OverdueCheckService 每日累加到 monthly_repayment.penalty_amount；
+        // 未逾期/存量记录该字段为 0，因此对老数据完全等价于原来的"只校验 repaymentAmount"。
+        //
+        // ⚠️ 与展示层保持一致：queryDueItems 返回的 totalDue 也是 repaymentAmount + penalty。
+        //    两处必须同步改 —— 否则用户看到的应还金额和提交时的校验值不一致，
+        //    前端按 totalDue 提交会被判"还款金额不一致"。
+        BigDecimal penalty = monthlyRepayment.getPenaltyAmount() != null
+                ? monthlyRepayment.getPenaltyAmount()
+                : BigDecimal.ZERO;
+        BigDecimal expectedAmount = monthlyRepayment.getRepaymentAmount().add(penalty);
+
+        if (!expectedAmount.equals(submitAmount)) {
+            // 保留实际值便于排查
+            log.warn("还款金额不一致 submitAmount={} expected={}（本金利息 {} + 罚息 {}）",
+                    submitAmount, expectedAmount, monthlyRepayment.getRepaymentAmount(), penalty);
             throw new BusinessException(400, "还款金额不一致");
         }
 
