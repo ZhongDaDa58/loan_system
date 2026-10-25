@@ -70,4 +70,45 @@ public class CreditScoreSyncServiceImpl implements CreditScoreSyncService {
                 userId, oldScore, newScore, reason);
 
     }
+
+    // ==================== 逾期扣分（逾期处理功能升级 第 5 步）====================
+
+    /** 信用分下限：扣到底就不再扣（避免负分/0 分这种不合业务常识的值） */
+    public static final int MIN_CREDIT_SCORE = 300;
+
+    /** 各等级扣分 */
+    private static final java.util.Map<String, Integer> OVERDUE_DEDUCT = java.util.Map.of(
+            "M1", 10,
+            "M2", 20,
+            "M3", 50);
+
+    @Override
+    public int deductForOverdue(String userId, String level) {
+        Integer deduct = OVERDUE_DEDUCT.get(level);
+        if (deduct == null) {
+            log.warn("逾期扣分跳过：未知等级 level={}, userId={}", level, userId);
+            return 0;
+        }
+
+        UserCreditScore existing = userCreditScoreMapper.selectByUserId(userId);
+        if (existing == null || existing.getCreditScore() == null) {
+            // 没有信用分记录就不扣 —— 不在这里「凭空造一条」，那是建档流程的职责
+            log.warn("逾期扣分跳过：用户 {} 无信用分记录", userId);
+            return 0;
+        }
+
+        int oldScore = existing.getCreditScore();
+        int newScore = Math.max(MIN_CREDIT_SCORE, oldScore - deduct);
+        int actual = oldScore - newScore;
+        if (actual <= 0) {
+            log.info("逾期扣分跳过：用户 {} 信用分已到底（{}），不再扣", userId, oldScore);
+            return 0;
+        }
+
+        userCreditScoreMapper.updateCreditScore(userId, newScore);
+        recordCreditScoreChange(userId, oldScore, newScore, "逾期扣分-" + level);
+        log.info("⚠️ 逾期扣分：用户 {} 等级 {}，信用分 {} -> {}（-{}）",
+                userId, level, oldScore, newScore, actual);
+        return actual;
+    }
 }

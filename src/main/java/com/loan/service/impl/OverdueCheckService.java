@@ -65,6 +65,10 @@ public class OverdueCheckService {
     @Resource
     private NotificationMapper notificationMapper;
 
+    /** 逾期扣分（第 5 步）：按等级扣不同分值，写变动流水 */
+    @Resource
+    private com.loan.service.CreditScoreSyncService creditScoreSyncService;
+
     /**
      * 定时任务：每天凌晨 2 点执行逾期检查。
      *
@@ -108,6 +112,13 @@ public class OverdueCheckService {
             if ((firstOverdue || levelChanged) && sendOverdueNotice(r, (int) days, newLevel)) {
                 notified++;
             }
+
+            // ===== 逾期扣分（第 5 步）=====
+            // 幂等：靠 score_deducted_level 记录"已扣到哪一级"，
+            // 同一等级只扣一次；升到更高等级才再扣（等级只升不降）。
+            if (needDeductScore(r.getScoreDeductedLevel(), newLevel)) {
+                deductScore(r, newLevel);
+            }
         }
 
         log.info("逾期检查完成：扫描 {} 条，更新 {} 条，发送通知 {} 条",
@@ -124,6 +135,45 @@ public class OverdueCheckService {
     }
 
     // ==================== 内部 ====================
+
+    /** 是否还需要扣分：没扣过，或新等级比已扣过的更高 */
+    private static boolean needDeductScore(String deductedLevel, String newLevel) {
+        if (deductedLevel == null) {
+            return true;
+        }
+        return rankOf(newLevel) > rankOf(deductedLevel);
+    }
+
+    private static int rankOf(String level) {
+        return switch (level) {
+            case "M3" -> 3;
+            case "M2" -> 2;
+            default -> 1;
+        };
+    }
+
+    /**
+     * 扣信用分。
+     *
+     * <p>⚠️ 扣分失败/分数已到底时<b>仍然回写 {@code score_deducted_level}</b> ——
+     * 否则第二天会重复尝试扣（虽然每次扣 0 分，但会产生大量无意义的流水与日志）。
+     */
+    private void deductScore(MonthlyRepayment r, String level) {
+        try {
+            String userId = repaymentPlanMapper.selectUserIdByPlanId(r.getPlanId());
+            if (userId == null) {
+                return;
+            }
+            int deducted = creditScoreSyncService.deductForOverdue(userId, level);
+            monthlyRepaymentMapper.updateScoreDeductedLevel(r.getRepaymentId(), level);
+            if (deducted > 0) {
+                log.info("逾期扣分完成：repaymentId={}, 等级={}, 扣 {} 分", r.getRepaymentId(), level, deducted);
+            }
+        } catch (Exception e) {
+            // 扣分失败不影响逾期标记本身（标记是资金/风控相关的那部分）
+            log.error("逾期扣分失败 repaymentId={}, level={}", r.getRepaymentId(), level, e);
+        }
+    }
 
     /** 按天数定级：M1(1-30) / M2(31-60) / M3(60+) */
     private static String levelOf(int days) {

@@ -232,4 +232,92 @@ class OverdueCheckIntegrationTest {
         assertThat(r.getRepaymentStatus()).as("已还款不能被改回 overdue").isEqualTo("paid");
         assertThat(r.getOverdueLevel()).isNull();
     }
+
+    // ==================== 逾期扣分（第 5 步）====================
+
+    /**
+     * 只保留指定的那一笔逾期，删掉 @BeforeEach 造的其余笔。
+     *
+     * <p><b>为什么需要它</b>：{@code @BeforeEach} 造了 4 笔（5/40/70/D+0 天），
+     * 而扣分是<b>按期次独立扣</b>的 —— M1(-10) + M2(-20) + M3(-50) = -80。
+     * 要验证"单笔扣多少"就必须隔离。
+     *
+     * <p>⚠️ 这也暴露了一个待产品确认的策略问题：<b>同一用户多笔逾期时扣分累加</b>，
+     * 3 笔就扣 80 分是否过重？是否应该改成"按用户最高等级只扣一次"？
+     * 当前实现是每笔独立扣（保留原样，未擅自改业务策略）。
+     */
+    private void onlyKeepOverdue(String keepRepaymentId) {
+        jdbc.update("DELETE FROM monthly_repayment WHERE repayment_id <> ?", keepRepaymentId);
+    }
+
+    /** 给测试用户造一条信用分记录（扣分的前提） */
+    private void seedCreditScore(int score) {
+        jdbc.update("INSERT INTO user_credit_score (user_id, credit_score) VALUES (?, ?)",
+                USER_ID, score);
+    }
+
+    private Integer currentCreditScore() {
+        return jdbc.queryForObject(
+                "SELECT credit_score FROM user_credit_score WHERE user_id = ?", Integer.class, USER_ID);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("M1 逾期 → 信用分扣 10；同一天再跑不重复扣（幂等）")
+    void deductScoreForM1Once() {
+        seedCreditScore(700);
+        onlyKeepOverdue("it-ovd-5");   // 只留一笔 M1，隔离验证单笔扣分
+
+        overdueCheckService.manualCheckOverdue();
+
+        assertThat(currentCreditScore())
+                .as("单笔 M1 应扣 10 分")
+                .isEqualTo(690);
+        assertThat(reload("it-ovd-5").getScoreDeductedLevel())
+                .as("要记录已扣到 M1，否则会重复扣")
+                .isEqualTo("M1");
+
+        // 再跑一次：等级没变 → 不该再扣
+        overdueCheckService.manualCheckOverdue();
+        assertThat(currentCreditScore())
+                .as("同一等级只扣一次")
+                .isEqualTo(690);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("等级跃迁 M1 → M2 → 再扣 20（累计 30）")
+    void deductAgainOnLevelUpgrade() {
+        seedCreditScore(700);
+        onlyKeepOverdue("it-ovd-5");   // 只留一笔，隔离验证跃迁
+
+        // 先按 5 天跑 → M1，扣 10
+        overdueCheckService.manualCheckOverdue();
+        assertThat(currentCreditScore()).isEqualTo(690);
+
+        // 天数推进到 40 天 → 升级 M2，应再扣 20
+        jdbc.update("UPDATE monthly_repayment SET due_date = DATE_SUB(CURDATE(), INTERVAL 40 DAY) "
+                + "WHERE repayment_id = 'it-ovd-5'");
+        overdueCheckService.manualCheckOverdue();
+
+        assertThat(currentCreditScore())
+                .as("M1(-10) + M2(-20) = -30")
+                .isEqualTo(670);
+        assertThat(reload("it-ovd-5").getScoreDeductedLevel()).isEqualTo("M2");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("信用分有下限 300，扣到底不再扣")
+    void creditScoreHasFloor() {
+        seedCreditScore(305);
+        onlyKeepOverdue("it-ovd-5");
+
+        // 5 天 → M1，应扣 10，但下限 300 → 实际只扣 5
+        overdueCheckService.manualCheckOverdue();
+
+        assertThat(currentCreditScore())
+                .as("不能扣到 300 以下")
+                .isEqualTo(300);
+    }
 }

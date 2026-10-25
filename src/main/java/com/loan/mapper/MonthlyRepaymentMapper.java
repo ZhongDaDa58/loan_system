@@ -54,6 +54,15 @@ public interface MonthlyRepaymentMapper {
                               @Param("overdueLevel") String overdueLevel,
                               @Param("levelChanged") boolean levelChanged);
 
+    /**
+     * 记录"已扣到哪个等级"—— 逾期扣分的幂等标记。
+     *
+     * <p>同一期同一等级只能扣一次；靠这个字段判断"要不要扣"，
+     * 否则每天跑任务都会重复扣分。
+     */
+    int updateScoreDeductedLevel(@Param("repaymentId") String repaymentId,
+                                @Param("level") String level);
+
     // 查询逾期
     List<MonthlyRepayment> selectOverdueByUserId(@Param("userId") String userId);
 
