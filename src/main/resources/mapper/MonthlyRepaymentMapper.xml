@@ -96,7 +96,8 @@
     <select id="selectOverdueByUserId" resultType="com.loan.entity.MonthlyRepayment">
         SELECT DISTINCT
             mr.repayment_id, mr.plan_id, mr.term, mr.principal, mr.interest,
-            mr.repayment_amount, mr.due_date, mr.repayment_status, mr.repayment_time
+            mr.repayment_amount, mr.due_date, mr.repayment_status, mr.repayment_time,
+                mr.overdue_days, mr.overdue_level
         FROM monthly_repayment mr
                  INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
         WHERE rp.user_id = #{userId}

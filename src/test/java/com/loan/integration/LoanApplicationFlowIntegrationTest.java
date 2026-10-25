@@ -23,6 +23,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -254,6 +255,57 @@ class LoanApplicationFlowIntegrationTest {
                 "有逾期记录时不该允许申请");
         assertTrue(e.getMessage().contains("逾期"),
                 "提示应提到逾期，实际提示：" + e.getMessage());
+    }
+
+    // ==================== 逾期分级（第 4 步：从一刀切改成分级）====================
+
+    /**
+     * 仅 M1（早期逾期 1-30 天）→ 放行。
+     *
+     * <p>这是"从一刀切改成分级"的核心变化：改造前只要有任何逾期就拒绝，
+     * 逾期 1 天和 90 天待遇完全一样。
+     */
+    @Test
+    @Transactional
+    @DisplayName("仅有 M1 早期逾期（5 天）→ 放行，不因逾期被拒")
+    void allowWhenOnlyM1Overdue() {
+        seedOverdue("it-plan-m1", "it-ovd-m1", 5, "M1");
+
+        Result<?> r = loanApplicationService.submitApply(dto("50000", 12), USER_ID);
+
+        assertThat(r).as("M1 早期逾期不该被一刀切拒绝").isNotNull();
+        assertThat(r.getCode())
+                .as("应正常进入审批流程（可能通过/转人工/拒绝，但不该是逾期拦截）")
+                .isEqualTo(200);
+    }
+
+    /** M3（60 天以上）→ 拒绝，且提示语与 M2 不同 */
+    @Test
+    @Transactional
+    @DisplayName("M3 严重逾期（70 天）→ 拒绝，提示语与 M2 不同")
+    void rejectWhenM3Overdue() {
+        seedOverdue("it-plan-m3", "it-ovd-m3", 70, "M3");
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> loanApplicationService.submitApply(dto("50000", 12), USER_ID));
+
+        assertTrue(e.getMessage().contains("60 天"),
+                "M3 的提示应体现严重程度（60 天），实际：" + e.getMessage());
+    }
+
+    /** 造一条逾期记录（还款计划 + 逾期明细） */
+    private void seedOverdue(String planId, String repaymentId, int daysAgo, String level) {
+        jdbc.update("INSERT INTO repayment_plan "
+                        + "(plan_id, application_id, user_id, total_amount, total_principal, "
+                        + " total_interest, repayment_type, term_count) "
+                        + "VALUES (?, ?, ?, 110.00, 100.00, 10.00, 'EQUAL_INSTALLMENT', 1)",
+                planId, planId + "-app", USER_ID);
+        jdbc.update("INSERT INTO monthly_repayment "
+                        + "(repayment_id, plan_id, term, principal, interest, repayment_amount, "
+                        + " due_date, repayment_status, overdue_days, overdue_level) "
+                        + "VALUES (?, ?, 1, 100.00, 10.00, 110.00, "
+                        + "        DATE_SUB(CURDATE(), INTERVAL ? DAY), 'overdue', ?, ?)",
+                repaymentId, planId, daysAgo, daysAgo, level);
     }
 
     // ==================== L1 规则（影子模式）====================

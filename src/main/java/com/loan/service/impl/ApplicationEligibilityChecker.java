@@ -119,9 +119,28 @@ public class ApplicationEligibilityChecker {
             throw new BusinessException(403, "您尚未完成实名认证，请先进行身份认证后再申请贷款");
         }
 
+        // ===== 逾期校验（逾期处理功能升级 第 4 步：从"一刀切"改成分级）=====
+        // 之前：只要有任何逾期就拒绝，逾期 1 天和 90 天待遇完全一样。
+        // 现在：按最高等级差异化 —— M2/M3 拒绝（提示语不同），M1 放行但留痕。
+        //
+        // ⚠️ M1 的"额度打折"本次未做：它要改 approvedAmount 整条链路（决策链 → 落库），
+        //    涉及真实金额，风险比拦截高，留到单独一步评估（见开发文档 §3.4）。
         List<MonthlyRepayment> overdueRecords = monthlyRepaymentMapper.selectOverdueByUserId(userId);
         if (!overdueRecords.isEmpty()) {
-            throw new BusinessException(400, "您有" + overdueRecords.size() + "笔逾期未还款记录，请先结清欠款后再申请");
+            String worst = worstOverdueLevel(overdueRecords);
+            int count = overdueRecords.size();
+            switch (worst) {
+                case "M3" -> throw new BusinessException(400,
+                        "您有 " + count + " 笔逾期且已超过 60 天（严重逾期），当前无法申请贷款，请联系客服处理");
+                case "M2" -> throw new BusinessException(400,
+                        "您有 " + count + " 笔逾期已超过 30 天，请先结清欠款后再申请");
+                case "M1" -> {
+                    // 早期逾期（1-30 天）：放行，但记录一下——便于后续统计"带逾期申请"的比例
+                    log.warn("⚠️ 用户 {} 存在 M1 早期逾期（{} 笔），本次放行", userId, count);
+                }
+                default -> throw new BusinessException(400,
+                        "您有 " + count + " 笔逾期未还款记录，请先结清欠款后再申请");
+            }
         }
 
         LoanProduct product = loanProductService.validateProduct(productId);
@@ -180,5 +199,37 @@ public class ApplicationEligibilityChecker {
 
         return new Eligibility(basics.product(), basics.applyAmount(), basics.applyTerm(),
                 basics.disbursementCardId(), creditProfile, userProfile);
+    }
+
+    // ==================== 逾期分级（第 4 步）====================
+
+    /**
+     * 取一组逾期记录里的最高等级（M3 &gt; M2 &gt; M1）。
+     *
+     * <p><b>为什么按"最高"而不是"数量"</b>：一笔 M3 比十笔 M1 更严重。
+     *
+     * <p>等级为 {@code null} 的（V4 之前的脏数据没回填到的）返回 {@code UNKNOWN}，
+     * 让调用方的 switch 落到 default 分支（拒绝）—— <b>不能按 M1 兜底</b>，
+     * 因为 M1 是放行的，那样会静默放掉真正的严重逾期。
+     */
+    private static String worstOverdueLevel(List<MonthlyRepayment> records) {
+        String worst = null;
+        for (MonthlyRepayment r : records) {
+            // ⚠️ 等级为 null（V4 前的脏数据未回填）不能按 M1 兜底 —— M1 分支是放行的，
+            //    那样会静默放掉真正的严重逾期。用 UNKNOWN 走 switch 的 default 分支（拒绝）。
+            String lv = r.getOverdueLevel() == null ? "UNKNOWN" : r.getOverdueLevel();
+            if (worst == null || rank(lv) > rank(worst)) {
+                worst = lv;
+            }
+        }
+        return worst == null ? "M1" : worst;
+    }
+
+    private static int rank(String level) {
+        return switch (level) {
+            case "M3" -> 3;
+            case "M2" -> 2;
+            default -> 1;
+        };
     }
 }
