@@ -262,7 +262,7 @@
                 WHEN 'overdue' THEN DATEDIFF(NOW(), mr.due_date)
                 ELSE 0
             END AS overdueDays,
-            COALESCE(mr.penalty_amount, 0) AS overduePenalty
+            mr.penalty_amount AS overduePenalty
         FROM monthly_repayment mr
         INNER JOIN repayment_plan rp ON mr.plan_id = rp.plan_id
         LEFT JOIN loan_application la ON rp.application_id = la.application_id

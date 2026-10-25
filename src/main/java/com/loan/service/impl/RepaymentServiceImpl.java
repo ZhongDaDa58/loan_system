@@ -208,13 +208,17 @@ public class RepaymentServiceImpl implements RepaymentService {
                 .filter(i -> "overdue".equals(i.getStatus()))
                 .count();
 
-        // 计算 totalDue = repaymentAmount + penalty（当前罚息为0）
+        // 计算 totalDue = 当期应还 + 罚息
+        // 罚息由 OverdueCheckService 每日累加到 monthly_repayment.penalty_amount，
+        // SQL 里已映射到 overduePenalty（未逾期/存量记录该字段为 0）。
         for (DueItemVO item : items) {
-            BigDecimal penalty = BigDecimal.ZERO;
-            item.setOverduePenalty(penalty);
-            BigDecimal total = item.getRepaymentAmount() != null ? item.getRepaymentAmount() : BigDecimal.ZERO;
-            total = total.add(penalty);
-            item.setTotalDue(total);
+            BigDecimal penalty = item.getOverduePenalty() != null
+                    ? item.getOverduePenalty()
+                    : BigDecimal.ZERO;
+            BigDecimal amount = item.getRepaymentAmount() != null
+                    ? item.getRepaymentAmount()
+                    : BigDecimal.ZERO;
+            item.setTotalDue(amount.add(penalty));
         }
 
         DueItemsVO result = new DueItemsVO(items.size(), overdueCount, items);
