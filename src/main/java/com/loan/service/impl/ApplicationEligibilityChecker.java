@@ -1,6 +1,7 @@
 package com.loan.service.impl;
 
 import com.loan.entity.LoanProduct;
+import com.loan.entity.OverdueBlacklist;
 import com.loan.entity.MonthlyRepayment;
 import com.loan.entity.SysUser;
 import com.loan.entity.UserBankCard;
@@ -50,6 +51,10 @@ public class ApplicationEligibilityChecker {
 
     @Resource
     private SysUserMapper sysUserMapper;
+
+    /** 逾期黑名单（第 6 步）：严重逾期结清后仍有观察期 */
+    @Resource
+    private com.loan.service.OverdueBlacklistService overdueBlacklistService;
 
     @Resource
     private MonthlyRepaymentMapper monthlyRepaymentMapper;
@@ -117,6 +122,19 @@ public class ApplicationEligibilityChecker {
         SysUser user = sysUserMapper.selectById(userId);
         if (user == null || user.getKycStatus() == null || user.getKycStatus() != 1) {
             throw new BusinessException(403, "您尚未完成实名认证，请先进行身份认证后再申请贷款");
+        }
+
+        // ===== 逾期黑名单（第 6 步）=====
+        // 放在逾期检查之前：黑名单是人工/系统做出的"更强结论"（严重逾期结清后仍需观察），
+        // 提示语也更准确 —— 说"您已被列入黑名单"，而不是让客户以为自己只是有点逾期。
+        OverdueBlacklist blacklist = overdueBlacklistService.getActive(userId);
+        if (blacklist != null) {
+            String until = blacklist.getExpireAt() == null
+                    ? "（长期有效）"
+                    : "（有效期至 " + new java.text.SimpleDateFormat("yyyy-MM-dd")
+                            .format(blacklist.getExpireAt()) + "）";
+            throw new BusinessException(400,
+                    "您因逾期已被列入黑名单" + until + "，当前无法申请贷款，请联系客服处理");
         }
 
         // ===== 逾期校验（逾期处理功能升级 第 4 步：从"一刀切"改成分级）=====

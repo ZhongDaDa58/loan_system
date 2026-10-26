@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.OverdueBlacklistMapper">
+
+    <!--
+      插入。用 NOT EXISTS 保证"一个用户最多一条生效中的记录"。
+      没建唯一索引的原因见 V5 迁移注释：MySQL 不支持部分索引，
+      而 UNIQUE(user_id, status) 会让多条 released 历史互相冲突。
+
+      返回 0 = 已有生效记录，Service 层据此判断"不用重复加"。
+    -->
+    <insert id="insertIfAbsent" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO overdue_blacklist
+            (user_id, reason, overdue_level, related_repayment_id, status,
+             effective_at, expire_at, operator_name)
+        SELECT #{userId}, #{reason}, #{overdueLevel}, #{relatedRepaymentId}, 'active',
+               COALESCE(#{effectiveAt}, NOW()), #{expireAt}, #{operatorName}
+        FROM DUAL
+        WHERE NOT EXISTS (
+            SELECT 1 FROM overdue_blacklist
+            WHERE user_id = #{userId}
+              AND status = 'active'
+              AND (expire_at IS NULL OR expire_at > NOW())
+        )
+    </insert>
+
+    <!-- 是否生效中（未解除 + 未过期） -->
+    <select id="countActive" resultType="int">
+        SELECT COUNT(*)
+        FROM overdue_blacklist
+        WHERE user_id = #{userId}
+          AND status = 'active'
+          AND (expire_at IS NULL OR expire_at > NOW())
+    </select>
+
+    <select id="selectActiveByUserId" resultType="com.loan.entity.OverdueBlacklist">
+        SELECT *
+        FROM overdue_blacklist
+        WHERE user_id = #{userId}
+          AND status = 'active'
+          AND (expire_at IS NULL OR expire_at > NOW())
+        ORDER BY effective_at DESC
+        LIMIT 1
+    </select>
+
+    <!--
+      解除。注意条件里也带 expire_at —— 已经自然过期的记录不重复置为 released，
+      否则 released_at 会被改成"今天"，历史时间线就乱了。
+    -->
+    <update id="releaseActive">
+        UPDATE overdue_blacklist
+        SET status = 'released',
+            released_at = NOW(),
+            release_reason = #{reason},
+            operator_name = COALESCE(#{operatorName}, operator_name)
+        WHERE user_id = #{userId}
+          AND status = 'active'
+          AND (expire_at IS NULL OR expire_at > NOW())
+    </update>
+
+    <select id="selectActivePage" resultType="com.loan.entity.OverdueBlacklist">
+        SELECT *
+        FROM overdue_blacklist
+        WHERE status = 'active'
+          AND (expire_at IS NULL OR expire_at > NOW())
+        ORDER BY effective_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="countActiveAll" resultType="long">
+        SELECT COUNT(*)
+        FROM overdue_blacklist
+        WHERE status = 'active'
+          AND (expire_at IS NULL OR expire_at > NOW())
+    </select>
+
+</mapper>

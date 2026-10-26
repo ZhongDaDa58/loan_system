@@ -86,6 +86,7 @@ class LoanApplicationFlowIntegrationTest {
         jdbc.update("DELETE FROM risk_decision_log WHERE user_id = ?", USER_ID);
         jdbc.update("DELETE FROM loan_application WHERE user_id = ?", USER_ID);
         jdbc.update("DELETE FROM user_credit_profile WHERE user_id = ?", USER_ID);
+        jdbc.update("DELETE FROM overdue_blacklist WHERE user_id = ?", USER_ID);
         jdbc.update("DELETE FROM sys_user WHERE user_id = ?", USER_ID);
 
         // 已实名用户
@@ -291,6 +292,44 @@ class LoanApplicationFlowIntegrationTest {
 
         assertTrue(e.getMessage().contains("60 天"),
                 "M3 的提示应体现严重程度（60 天），实际：" + e.getMessage());
+    }
+
+    // ==================== 逾期黑名单拦截（第 6 步）====================
+
+    /** 造一条生效中的黑名单记录 */
+    private void seedBlacklist(String expireAtExpr) {
+        jdbc.update("INSERT INTO overdue_blacklist "
+                        + "(user_id, reason, overdue_level, status, effective_at, expire_at) "
+                        + "VALUES (?, 'M3 逾期 75 天，结清后观察 6 个月', 'M3', 'active', NOW(), "
+                        + expireAtExpr + ")",
+                USER_ID);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("在黑名单里 → 拒绝；提示语是「黑名单」而不是笼统的「逾期」")
+    void rejectWhenBlacklisted() {
+        seedBlacklist("DATE_ADD(NOW(), INTERVAL 180 DAY)");
+
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> loanApplicationService.submitApply(dto("50000", 12), USER_ID));
+
+        assertThat(e.getMessage())
+                .as("要说清楚是黑名单拦截，别让客户以为自己只是有点逾期。实际：%s", e.getMessage())
+                .contains("黑名单");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("黑名单过期 → 不再拦截（status 仍是 active，靠 expire_at 判断）")
+    void allowAfterBlacklistExpired() {
+        seedBlacklist("DATE_SUB(NOW(), INTERVAL 1 DAY)");
+
+        Result<?> r = loanApplicationService.submitApply(dto("50000", 12), USER_ID);
+
+        assertThat(r.getCode())
+                .as("过期后应能正常申请，不该被黑名单拦")
+                .isEqualTo(200);
     }
 
     /** 造一条逾期记录（还款计划 + 逾期明细） */
