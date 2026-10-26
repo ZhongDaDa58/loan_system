@@ -261,6 +261,58 @@ class OverdueCheckIntegrationTest {
                 "SELECT credit_score FROM user_credit_score WHERE user_id = ?", Integer.class, USER_ID);
     }
 
+    /** 该用户"已按哪个最高逾期等级扣过分"（V7 起幂等标记在用户表上） */
+    private String lastDeductedLevel() {
+        return jdbc.queryForObject(
+                "SELECT last_overdue_deduct_level FROM user_credit_score WHERE user_id = ?",
+                String.class, USER_ID);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 多笔逾期只按最高等级扣一次（不是每笔各扣一次）")
+    void deductOnceByWorstLevel() {
+        // @BeforeEach 造了 3 笔逾期：M1(5天) + M2(40天) + M3(70天)，另加一笔 D+0 不算逾期
+        seedCreditScore(700);
+
+        overdueCheckService.manualCheckOverdue();
+
+        assertThat(currentCreditScore())
+                .as("按最高等级 M3 扣 50，而不是 10+20+50=80。"
+                        + "分期贷款多期逾期本质是一次违约，按期次各扣会直接打到底分")
+                .isEqualTo(650);
+        assertThat(lastDeductedLevel()).isEqualTo("M3");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 逾期笔数不影响扣分额度（10 笔 M1 和 1 笔 M1 扣一样多）")
+    void manyM1DeductSameAsOne() {
+        seedCreditScore(700);
+
+        // 只留 1 笔 M1
+        onlyKeepOverdue("it-ovd-5");
+        overdueCheckService.manualCheckOverdue();
+        int afterOne = currentCreditScore();
+
+        // 重置分数与标记，改成造 5 笔 M1
+        jdbc.update("UPDATE user_credit_score SET credit_score = 700, "
+                + "last_overdue_deduct_level = NULL WHERE user_id = ?", USER_ID);
+        jdbc.update("DELETE FROM monthly_repayment");
+        for (int i = 0; i < 5; i++) {
+            jdbc.update("INSERT INTO monthly_repayment "
+                    + "(repayment_id, plan_id, term, principal, interest, repayment_amount, "
+                    + " due_date, repayment_status) "
+                    + "VALUES (?, ?, ?, 300.00, 33.00, 333.00, DATE_SUB(CURDATE(), INTERVAL 5 DAY), 'unpaid')",
+                    "it-many-m1-" + i, PLAN_ID, i + 1);
+        }
+        overdueCheckService.manualCheckOverdue();
+
+        assertThat(currentCreditScore())
+                .as("5 笔 M1 仍只扣 10 分（笔数不是风险因素，逾期天数才是）")
+                .isEqualTo(afterOne);
+    }
+
     @Test
     @Transactional
     @DisplayName("M1 逾期 → 信用分扣 10；同一天再跑不重复扣（幂等）")
@@ -273,8 +325,8 @@ class OverdueCheckIntegrationTest {
         assertThat(currentCreditScore())
                 .as("单笔 M1 应扣 10 分")
                 .isEqualTo(690);
-        assertThat(reload("it-ovd-5").getScoreDeductedLevel())
-                .as("要记录已扣到 M1，否则会重复扣")
+        assertThat(lastDeductedLevel())
+                .as("要记录已按 M1 扣过，否则会重复扣（V7 起标记在用户表上，不是期次表）")
                 .isEqualTo("M1");
 
         // 再跑一次：等级没变 → 不该再扣
@@ -303,7 +355,7 @@ class OverdueCheckIntegrationTest {
         assertThat(currentCreditScore())
                 .as("M1(-10) + M2(-20) = -30")
                 .isEqualTo(670);
-        assertThat(reload("it-ovd-5").getScoreDeductedLevel()).isEqualTo("M2");
+        assertThat(lastDeductedLevel()).isEqualTo("M2");
     }
 
     @Test
@@ -347,25 +399,52 @@ class OverdueCheckIntegrationTest {
 
     @Test
     @Transactional
-    @DisplayName("M2 罚息高于 M1（等级倍数生效）")
-    void penaltyHigherForM2() {
-        // 只留 M1 那笔，先算出 M1 的罚息
-        onlyKeepOverdue("it-ovd-5");
-        overdueCheckService.manualCheckOverdue();
-        java.math.BigDecimal m1Penalty = reload("it-ovd-5").getPenaltyAmount();
+    @DisplayName("★ 罚息随逾期天数增长（按天计息本身就是'越拖越贵'，不再叠加等级倍数）")
+    void penaltyGrowsWithOverdueDays() {
+        onlyKeepOverdue("it-ovd-40");
 
-        // 把同一笔推进到 M2，清掉计息标记，重新算一次
+        // 第一次：首次计息只算 1 天
+        overdueCheckService.manualCheckOverdue();
+        java.math.BigDecimal afterOneDay = reload("it-ovd-40").getPenaltyAmount();
+        assertThat(afterOneDay).isGreaterThan(java.math.BigDecimal.ZERO);
+
+        // 把"最后计息日"往前推 3 天，下次跑就一次计 3 天
         jdbc.update("UPDATE monthly_repayment "
-                + "SET due_date = DATE_SUB(CURDATE(), INTERVAL 40 DAY), "
-                + "    penalty_amount = 0, penalty_last_calc_date = NULL "
-                + "WHERE repayment_id = 'it-ovd-5'");
+                + "SET penalty_last_calc_date = DATE_SUB(CURDATE(), INTERVAL 3 DAY) "
+                + "WHERE repayment_id = 'it-ovd-40'");
         overdueCheckService.manualCheckOverdue();
 
-        java.math.BigDecimal m2Penalty = reload("it-ovd-5").getPenaltyAmount();
-        assertThat(m2Penalty)
-                .as("M2 倍数 1.5 > M1 倍数 1，同金额同期数下罚息应更高（M1=%s, M2=%s）",
-                        m1Penalty, m2Penalty)
-                .isGreaterThan(m1Penalty);
+        java.math.BigDecimal secondIncrement =
+                reload("it-ovd-40").getPenaltyAmount().subtract(afterOneDay);
+
+        assertThat(secondIncrement)
+                .as("计 3 天的增量应大于计 1 天的（1天=%s, 3天增量=%s）",
+                        afterOneDay, secondIncrement)
+                .isGreaterThan(afterOneDay);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 罚息有年化封顶：累计不会超过「应还 × 6%/年 × 逾期年数」")
+    void penaltyCappedByAnnualRate() {
+        // 逾期 70 天、应还 333 元 -> 上限 = 333 × 0.06 × 70/365 ≈ 3.83
+        onlyKeepOverdue("it-ovd-70");
+
+        // 直接把已计罚息顶到 3.80（离上限只剩 0.03），并让下次要计 10 天
+        jdbc.update("UPDATE monthly_repayment "
+                + "SET penalty_amount = 3.80, "
+                + "    penalty_last_calc_date = DATE_SUB(CURDATE(), INTERVAL 10 DAY) "
+                + "WHERE repayment_id = 'it-ovd-70'");
+        overdueCheckService.manualCheckOverdue();
+
+        java.math.BigDecimal after = reload("it-ovd-70").getPenaltyAmount();
+
+        assertThat(after)
+                .as("10 天原本应计约 0.53 元，但剩余额度只有 0.03，必须被截断在上限内")
+                .isLessThanOrEqualTo(new java.math.BigDecimal("3.84"));
+        assertThat(after)
+                .as("也应该确实计了一点（不是直接归零）")
+                .isGreaterThan(new java.math.BigDecimal("3.80"));
     }
 
     @Test

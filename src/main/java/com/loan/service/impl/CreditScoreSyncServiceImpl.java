@@ -97,11 +97,26 @@ public class CreditScoreSyncServiceImpl implements CreditScoreSyncService {
             return 0;
         }
 
+        // ===== 用户维度幂等（V7）=====
+        // 只看"最高等级有没有提升"：同级别不重复扣，降级也不会退回分数。
+        // 这样分期贷款逾期 10 期只按最高等级扣一次，而不是扣 10 次。
+        if (rank(level) <= rank(existing.getLastOverdueDeductLevel())) {
+            log.debug("逾期扣分跳过：用户 {} 已按 {} 扣过，本次最高等级 {} 未提升",
+                    userId, existing.getLastOverdueDeductLevel(), level);
+            return 0;
+        }
+
         int oldScore = existing.getCreditScore();
         int newScore = Math.max(MIN_CREDIT_SCORE, oldScore - deduct);
         int actual = oldScore - newScore;
+
+        // ⚠️ 即使分数已到底（actual=0）也要更新标记：
+        //    否则用户下次逾期升级时会反复尝试扣分、反复打日志。
+        userCreditScoreMapper.updateLastOverdueDeductLevel(userId, level);
+
         if (actual <= 0) {
-            log.info("逾期扣分跳过：用户 {} 信用分已到底（{}），不再扣", userId, oldScore);
+            log.info("逾期扣分跳过：用户 {} 信用分已到底（{}），只更新等级标记为 {}",
+                    userId, oldScore, level);
             return 0;
         }
 
@@ -110,5 +125,18 @@ public class CreditScoreSyncServiceImpl implements CreditScoreSyncService {
         log.info("⚠️ 逾期扣分：用户 {} 等级 {}，信用分 {} -> {}（-{}）",
                 userId, level, oldScore, newScore, actual);
         return actual;
+    }
+
+    /** 等级排序：M3 &gt; M2 &gt; M1；{@code null} 视为比 M1 更低（从未扣过分） */
+    private static int rank(String level) {
+        if (level == null) {
+            return 0;
+        }
+        return switch (level) {
+            case "M3" -> 3;
+            case "M2" -> 2;
+            case "M1" -> 1;
+            default -> 0;
+        };
     }
 }

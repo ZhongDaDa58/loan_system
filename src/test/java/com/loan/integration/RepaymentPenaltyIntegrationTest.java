@@ -117,6 +117,86 @@ class RepaymentPenaltyIntegrationTest {
                 .isEqualByComparingTo(new BigDecimal("338.00"));
     }
 
+    // ==================== 容差区间（跨日罚息增长的兜底）====================
+
+    /** 造一个「能还得起钱」的账户：余额充足 + 一张可用银行卡 */
+    private void seedPayableAccount() {
+        jdbc.update("DELETE FROM user_bank_card WHERE user_id = ?", USER_ID);
+        jdbc.update("DELETE FROM sys_user WHERE user_id = ?", USER_ID);
+        jdbc.update("INSERT INTO sys_user (user_id, phone, password, real_name, role, status, "
+                + " kyc_status, account_balance) VALUES (?, '13900007001', 'pwd', '容差测试', "
+                + " 'USER', 1, 1, 5000.00)", USER_ID);
+
+        jdbc.update("DELETE FROM mock_bank_card_pool WHERE id = 9701");
+        jdbc.update("INSERT INTO mock_bank_card_pool (id, card_number, bank_code, bank_name, "
+                + " card_type, cardholder_name, id_card, phone, balance, status, daily_limit) "
+                + "VALUES (9701, '622200009701', 'ICBC', '工商银行', 'DEBIT', '容差测试', "
+                + " '110101199001010000', '13900007001', 5000.00, 'ACTIVE', 50000.00)");
+
+        jdbc.update("INSERT INTO user_bank_card (user_id, pool_card_id, card_number, alias_name, "
+                + " is_default, bind_status) VALUES (?, 9701, '622200009701', '测试卡', 1, 'ACTIVE')",
+                USER_ID);
+    }
+
+    private void payWith(BigDecimal submitAmount) {
+        RepaymentSubmitDTO dto = new RepaymentSubmitDTO();
+        dto.setRepaymentId(REPAYMENT_ID);
+        dto.setRepaymentAmount(submitAmount);
+        repaymentService.submitRepayment(dto, USER_ID);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 容差：正好付清 -> 成功")
+    void payExactAmount() {
+        seedPayableAccount();
+
+        payWith(new BigDecimal("338.00"));
+
+        assertThat(jdbc.queryForObject(
+                "SELECT repayment_status FROM monthly_repayment WHERE repayment_id = ?",
+                String.class, REPAYMENT_ID)).isEqualTo("paid");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 容差：跨日罚息多涨了一天 -> 仍在容差内，还进得去")
+    void payWithinOneDayTolerance() {
+        seedPayableAccount();
+
+        // expected=338.00，一天罚息 = 333 × 0.00016 ≈ 0.05 -> 上限 338.05
+        payWith(new BigDecimal("338.05"));
+
+        assertThat(jdbc.queryForObject(
+                "SELECT repayment_status FROM monthly_repayment WHERE repayment_id = ?",
+                String.class, REPAYMENT_ID))
+                .as("23:59 看到 338、00:01 提交时罚息涨了一点，不该让用户卡在这里")
+                .isEqualTo("paid");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 容差：超出一天罚息的多还 -> 仍然拒绝（多扣的钱不退还，必须卡死）")
+    void payBeyondToleranceRejected() {
+        seedPayableAccount();
+
+        // 338.10 超过上限 338.05
+        assertThatThrownBy(() -> payWith(new BigDecimal("338.10")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("金额不一致");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 容差：少还一分钱也拒绝（这个方向不能放宽）")
+    void payLessRejected() {
+        seedPayableAccount();
+
+        assertThatThrownBy(() -> payWith(new BigDecimal("337.99")))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("金额不一致");
+    }
+
     @Test
     @Transactional
     @DisplayName("★ 还款校验：传不含罚息的金额会被拒（与展示层保持一致）")

@@ -20,6 +20,11 @@ public interface UserCreditScoreMapper {
     // 如果不存在则插入，存在则更新
     int upsert(UserCreditScore userCreditScore);
 
+    /**
+     * 记录"该用户已按哪个最高逾期等级扣过分"（V7，用户维度幂等标记）。
+     */
+    int updateLastOverdueDeductLevel(@Param("userId") String userId, @Param("level") String level);
+
     // ========== 用户管理模块 ==========
 
     /**

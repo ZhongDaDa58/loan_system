@@ -17,7 +17,9 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 逾期检测与分级（逾期处理功能升级 第 2 步）
@@ -58,7 +60,7 @@ public class OverdueCheckService {
     // 日罚息率含义：应还未还金额 × 基础日利率 × 等级倍数，按天累加（单利，不复利）。
 
     /** 基础日罚息率（默认万分之五 = 0.05%/天，年化约 18%） */
-    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.daily-rate:0.0005}")
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.daily-rate:0.00016}")
     private java.math.BigDecimal penaltyDailyRate;
 
     /** M1 倍数（早期逾期，保持基准） */
@@ -66,12 +68,22 @@ public class OverdueCheckService {
     private java.math.BigDecimal penaltyMultiplierM1;
 
     /** M2 倍数（越拖越贵） */
-    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.multiplier.m2:1.5}")
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.multiplier.m2:1}")
     private java.math.BigDecimal penaltyMultiplierM2;
 
     /** M3 倍数 */
-    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.multiplier.m3:3}")
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.multiplier.m3:1}")
     private java.math.BigDecimal penaltyMultiplierM3;
+
+    /**
+     * 罚息累计年化上限（合规硬封顶）。
+     *
+     * <p>累计罚息 &lt;= 当期应还 × 该比例 × 逾期年数。默认 0.06（6%/年），
+     * 配合假设的 18% 合同利率，把客户总成本压在约 24% 以内。
+     * 具体口径见 application.properties 里的合规调整记录。
+     */
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.cap-annual-rate:0.06}")
+    private java.math.BigDecimal penaltyCapAnnualRate;
 
     @Resource
     private MonthlyRepaymentMapper monthlyRepaymentMapper;
@@ -88,6 +100,10 @@ public class OverdueCheckService {
     /** 逾期扣分（第 5 步）：按等级扣不同分值，写变动流水 */
     @Resource
     private com.loan.service.CreditScoreSyncService creditScoreSyncService;
+
+    /** 罚息计算（第 3 步）：费率/倍数/封顶都在那个类里，本类只管调用 */
+    @Resource
+    private OverduePenaltyCalculator penaltyCalculator;
 
     /**
      * 定时任务：每天凌晨 2 点执行逾期检查。
@@ -106,6 +122,8 @@ public class OverdueCheckService {
         LocalDate today = LocalDate.now();
         int updated = 0;
         int notified = 0;
+        // 用户维度扣分：先收集"每个用户当前的最高逾期等级"，循环结束后统一扣（V7）
+        Map<String, String> userWorstLevel = new HashMap<>();
 
         for (MonthlyRepayment r : candidates) {
             LocalDate due = toLocalDate(r.getDueDate());
@@ -127,7 +145,10 @@ public class OverdueCheckService {
             updated++;
 
             // ===== 罚息（第 3 步）：按天增量累加，同一天只算一次 =====
-            java.math.BigDecimal penaltyIncrement = calcPenaltyIncrement(r, today, newLevel);
+            // 注意把本次算出的 days 传进去：r.getOverdueDays() 是「更新前」读进内存的旧值
+            // （上面 updateOverdueTracking 改了 DB，但对象没跟着变），拿它做封顶会算错。
+            java.math.BigDecimal penaltyIncrement =
+                    penaltyCalculator.calcIncrement(r, today, newLevel, days);
             if (penaltyIncrement.signum() > 0) {
                 monthlyRepaymentMapper.updatePenalty(
                         r.getRepaymentId(), penaltyIncrement, today);
@@ -143,16 +164,39 @@ public class OverdueCheckService {
                 notified++;
             }
 
-            // ===== 逾期扣分（第 5 步）=====
-            // 幂等：靠 score_deducted_level 记录"已扣到哪一级"，
-            // 同一等级只扣一次；升到更高等级才再扣（等级只升不降）。
-            if (needDeductScore(r.getScoreDeductedLevel(), newLevel)) {
-                deductScore(r, newLevel);
+            // ===== 逾期扣分（第 5 步；V7 改成用户维度）=====
+            // 这里只**收集**每个用户的最高逾期等级，真正扣分在循环外按用户做一次。
+            // 原因：分期贷款逾期 10 期本质是**一次违约**，按期次各扣一次会直接打到底分，
+            // 而且会让"10 笔 M1"比"1 笔 M3"扣得还重（权重倒挂）。
+            String uid = repaymentPlanMapper.selectUserIdByPlanId(r.getPlanId());
+            if (uid != null) {
+                userWorstLevel.merge(uid, newLevel,
+                        (a, b) -> levelRank(a) >= levelRank(b) ? a : b);
             }
         }
 
-        log.info("逾期检查完成：扫描 {} 条，更新 {} 条，发送通知 {} 条",
-                candidates.size(), updated, notified);
+        // 按用户扣一次分（幂等判断在 deductForOverdue 内部，靠 last_overdue_deduct_level）
+        userWorstLevel.forEach((uid, level) -> {
+            try {
+                creditScoreSyncService.deductForOverdue(uid, level);
+            } catch (Exception e) {
+                // 扣分失败不影响逾期标记/罚息/通知 —— 那些才是主链路
+                log.error("逾期扣分失败 userId={}, level={}", uid, level, e);
+            }
+        });
+
+        log.info("逾期检查完成：扫描 {} 条，更新 {} 条，发送通知 {} 条，涉及 {} 个用户",
+                candidates.size(), updated, notified, userWorstLevel.size());
+    }
+
+    /** 等级排序，用于取用户的最高逾期等级 */
+    private static int levelRank(String level) {
+        return switch (level) {
+            case "M3" -> 3;
+            case "M2" -> 2;
+            case "M1" -> 1;
+            default -> 0;
+        };
     }
 
     /**
@@ -165,85 +209,6 @@ public class OverdueCheckService {
     }
 
     // ==================== 内部 ====================
-
-    /**
-     * 计算本次应新增的罚息（增量）。
-     *
-     * <p><b>公式</b>：{@code 当期应还 × 基础日罚息率 × 等级倍数 × 距上次计算的天数}（单利）。
-     *
-     * <p><b>幂等</b>：靠 {@code penalty_last_calc_date}。
-     * {@code last >= today} 时直接返回 0 —— 同一天第二次调用不会重复计息。
-     *
-     * <p><b>首次计息只算 1 天</b>（{@code last == null}）：这样"上线前就已经逾期很久"的
-     * 存量记录不会突然被追补一大笔罚息（与 V4 迁移"回填不追补罚息"的设计一致）。
-     */
-    private java.math.BigDecimal calcPenaltyIncrement(MonthlyRepayment r,
-                                                      LocalDate today,
-                                                      String level) {
-        if (r.getRepaymentAmount() == null) {
-            return java.math.BigDecimal.ZERO;
-        }
-        LocalDate last = toLocalDate(r.getPenaltyLastCalcDate());
-        long daysToCharge;
-        if (last == null) {
-            daysToCharge = 1;                 // 首次：只算今天
-        } else if (last.isBefore(today)) {
-            daysToCharge = ChronoUnit.DAYS.between(last, today);
-        } else {
-            return java.math.BigDecimal.ZERO;  // 今天已算过（幂等）
-        }
-
-        java.math.BigDecimal multiplier = switch (level) {
-            case "M3" -> penaltyMultiplierM3;
-            case "M2" -> penaltyMultiplierM2;
-            default -> penaltyMultiplierM1;
-        };
-
-        return r.getRepaymentAmount()
-                .multiply(penaltyDailyRate)
-                .multiply(multiplier)
-                .multiply(java.math.BigDecimal.valueOf(daysToCharge))
-                .setScale(2, java.math.RoundingMode.HALF_UP);
-    }
-
-    /** 是否还需要扣分：没扣过，或新等级比已扣过的更高 */
-    private static boolean needDeductScore(String deductedLevel, String newLevel) {
-        if (deductedLevel == null) {
-            return true;
-        }
-        return rankOf(newLevel) > rankOf(deductedLevel);
-    }
-
-    private static int rankOf(String level) {
-        return switch (level) {
-            case "M3" -> 3;
-            case "M2" -> 2;
-            default -> 1;
-        };
-    }
-
-    /**
-     * 扣信用分。
-     *
-     * <p>⚠️ 扣分失败/分数已到底时<b>仍然回写 {@code score_deducted_level}</b> ——
-     * 否则第二天会重复尝试扣（虽然每次扣 0 分，但会产生大量无意义的流水与日志）。
-     */
-    private void deductScore(MonthlyRepayment r, String level) {
-        try {
-            String userId = repaymentPlanMapper.selectUserIdByPlanId(r.getPlanId());
-            if (userId == null) {
-                return;
-            }
-            int deducted = creditScoreSyncService.deductForOverdue(userId, level);
-            monthlyRepaymentMapper.updateScoreDeductedLevel(r.getRepaymentId(), level);
-            if (deducted > 0) {
-                log.info("逾期扣分完成：repaymentId={}, 等级={}, 扣 {} 分", r.getRepaymentId(), level, deducted);
-            }
-        } catch (Exception e) {
-            // 扣分失败不影响逾期标记本身（标记是资金/风控相关的那部分）
-            log.error("逾期扣分失败 repaymentId={}, level={}", r.getRepaymentId(), level, e);
-        }
-    }
 
     /** 按天数定级：M1(1-30) / M2(31-60) / M3(60+) */
     private static String levelOf(int days) {

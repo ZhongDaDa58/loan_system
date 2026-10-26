@@ -3,10 +3,24 @@
 <mapper namespace="com.loan.mapper.UserCreditScoreMapper">
 
     <select id="selectByUserId" resultType="com.loan.entity.UserCreditScore">
-        SELECT id, user_id AS userId, credit_score AS creditScore, create_time AS createTime, update_time AS updateTime
+        SELECT id, user_id AS userId, credit_score AS creditScore,
+               last_overdue_deduct_level AS lastOverdueDeductLevel,
+               create_time AS createTime, update_time AS updateTime
         FROM user_credit_score
         WHERE user_id = #{userId}
     </select>
+
+    <!--
+      逾期扣分的用户维度幂等标记（V7）。
+      和 CreditScoreSyncServiceImpl.deductForOverdue 配套：
+      先比较该用户的最高逾期等级，比这个字段更高才扣分。
+    -->
+    <update id="updateLastOverdueDeductLevel">
+        UPDATE user_credit_score
+        SET last_overdue_deduct_level = #{level},
+            update_time = CURRENT_TIMESTAMP
+        WHERE user_id = #{userId}
+    </update>
 
     <insert id="insert" parameterType="com.loan.entity.UserCreditScore">
         INSERT INTO user_credit_score (user_id, credit_score)

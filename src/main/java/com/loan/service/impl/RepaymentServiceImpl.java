@@ -41,6 +41,15 @@ public class RepaymentServiceImpl implements RepaymentService {
     @Resource
     private CollectionTaskService collectionTaskService;
 
+    /**
+     * 基础日罚息率 —— 用于计算还款金额的容差上限（"一天罚息"）。
+     *
+     * <p>必须和 {@code OverdueCheckService} 用<b>同一个配置 key</b>，
+     * 否则容差和实际计息会脱节（比如容差按 0.0005 算、实际按 0.00016 计）。
+     */
+    @org.springframework.beans.factory.annotation.Value("${overdue.penalty.daily-rate:0.00016}")
+    private BigDecimal penaltyDailyRate;
+
     @Resource
     private SysUserMapper sysUserMapper;
 
@@ -105,11 +114,31 @@ public class RepaymentServiceImpl implements RepaymentService {
                 : BigDecimal.ZERO;
         BigDecimal expectedAmount = monthlyRepayment.getRepaymentAmount().add(penalty);
 
-        if (!expectedAmount.equals(submitAmount)) {
-            // 保留实际值便于排查
-            log.warn("还款金额不一致 submitAmount={} expected={}（本金利息 {} + 罚息 {}）",
-                    submitAmount, expectedAmount, monthlyRepayment.getRepaymentAmount(), penalty);
+        // 容差区间：允许「刚好差一天罚息」的多还，解决跨日竞态
+        //
+        // 场景：用户 23:59 打开页面看到应还 338.00，00:01 提交时定时任务已经跑过，
+        //       expected 变成 338.01 —— 如果严格要求相等，用户会莫名收到"金额不一致"。
+        //
+        // 规则：
+        //   少还 -> 拒绝（这个不能放宽）
+        //   多还 -> 允许，但不超过「一天的罚息」。
+        //          上限卡死是必须的：当前实现是 updateAccountBalance 直接扣 submitAmount，
+        //          多还的钱不退还，放开上限会让用户被多扣。
+        BigDecimal oneDayPenalty = monthlyRepayment.getRepaymentAmount()
+                .multiply(penaltyDailyRate)
+                .setScale(2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal upperBound = expectedAmount.add(oneDayPenalty);
+
+        if (submitAmount.compareTo(expectedAmount) < 0 || submitAmount.compareTo(upperBound) > 0) {
+            log.warn("还款金额超容许范围 submitAmount={} 允许区间=[{}, {}]（本金利息 {} + 罚息 {}）",
+                    submitAmount, expectedAmount, upperBound,
+                    monthlyRepayment.getRepaymentAmount(), penalty);
             throw new BusinessException(400, "还款金额不一致");
+        }
+        if (submitAmount.compareTo(expectedAmount) > 0) {
+            // 落在容差内：按实际提交金额扣款，多还的部分不退还但要留痕
+            log.info("还款金额在容差内：submitAmount={} expected={}（跨日罚息增长，差额 {} 元）",
+                    submitAmount, expectedAmount, submitAmount.subtract(expectedAmount));
         }
 
         Long paymentCardId = repaymentDTO.getPaymentCardId();
