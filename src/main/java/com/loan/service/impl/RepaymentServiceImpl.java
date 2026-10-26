@@ -15,6 +15,7 @@ import com.loan.mapper.RepaymentPlanMapper;
 import com.loan.mapper.SysUserMapper;
 import com.loan.mapper.UserBankCardMapper;
 import com.loan.service.MockBankCardService;
+import com.loan.service.CollectionTaskService;
 import com.loan.service.RepaymentService;
 import jakarta.annotation.Resource;
 import org.slf4j.Logger;
@@ -35,6 +36,10 @@ public class RepaymentServiceImpl implements RepaymentService {
 
     @Resource
     private MonthlyRepaymentMapper monthlyRepaymentMapper;
+
+    /** 催收任务（第 6 步-c）：还款成功后自动关闭该期任务 */
+    @Resource
+    private CollectionTaskService collectionTaskService;
 
     @Resource
     private SysUserMapper sysUserMapper;
@@ -168,6 +173,21 @@ public class RepaymentServiceImpl implements RepaymentService {
         );
         if (updateStatusRows != 1) {
             throw new BusinessException(500, "还款状态更新失败");
+        }
+
+        // 还款成功 -> 关掉这期的催收任务（第 6 步-c）
+        //
+        // ⚠️ 必须包 try-catch：关任务失败**绝不能影响还款本身**。
+        //    还款才是钱的流向，催收任务是辅助运营；而且本方法在事务里，
+        //    不 catch 的话关任务抛异常会把已扣款的还款一起回滚。
+        try {
+            int closed = collectionTaskService.closeByRepayment(
+                    repaymentId, "客户已还款（自动关闭）");
+            if (closed > 0) {
+                log.info("期次 {} 还款成功，自动关闭 {} 个催收任务", repaymentId, closed);
+            }
+        } catch (Exception e) {
+            log.error("期次 {} 还款成功但催收任务关闭失败（不影响还款）", repaymentId, e);
         }
 
         BigDecimal currentBalance = sysUserMapper.selectAccountBalance(userId);

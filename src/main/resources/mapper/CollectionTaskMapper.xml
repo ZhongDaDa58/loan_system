@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.CollectionTaskMapper">
+
+    <sql id="cols">
+        id, task_id, user_id, repayment_id, plan_id, overdue_level, overdue_days,
+        priority, status, assigned_to, next_follow_date, promised_pay_date,
+        promise_violated, last_follow_at, close_reason, closed_at,
+        create_time, update_time
+    </sql>
+
+    <!--
+      建任务。NOT EXISTS 保证"一期最多一条 open 任务"。
+      没建唯一索引的原因见 V6 迁移注释 ②（和 V5 黑名单同一个坑）。
+    -->
+    <insert id="insertIfNoOpenTask" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO collection_task
+            (task_id, user_id, repayment_id, plan_id, overdue_level, overdue_days,
+             priority, status, next_follow_date)
+        SELECT #{taskId}, #{userId}, #{repaymentId}, #{planId}, #{overdueLevel}, #{overdueDays},
+               #{priority}, 'pending', #{nextFollowDate}
+        FROM DUAL
+        WHERE NOT EXISTS (
+            SELECT 1 FROM collection_task
+            WHERE repayment_id = #{repaymentId}
+              AND status IN ('pending', 'in_progress', 'promised')
+        )
+    </insert>
+
+    <select id="selectByTaskId" resultType="com.loan.entity.CollectionTask">
+        SELECT <include refid="cols"/> FROM collection_task WHERE task_id = #{taskId}
+    </select>
+
+    <select id="selectOpenByRepaymentId" resultType="com.loan.entity.CollectionTask">
+        SELECT <include refid="cols"/>
+        FROM collection_task
+        WHERE repayment_id = #{repaymentId}
+          AND status IN ('pending', 'in_progress', 'promised')
+        ORDER BY create_time DESC
+        LIMIT 1
+    </select>
+
+    <sql id="pageWhere">
+        <where>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="assignedTo != null and assignedTo != ''">
+                AND assigned_to = #{assignedTo}
+            </if>
+            <if test="dueFollowOnly">
+                AND status IN ('pending', 'in_progress', 'promised')
+                AND next_follow_date IS NOT NULL
+                AND next_follow_date &lt;= CURDATE()
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPage" resultType="com.loan.entity.CollectionTask">
+        SELECT <include refid="cols"/>
+        FROM collection_task
+        <include refid="pageWhere"/>
+        <!-- 优先级高的、逾期久的排前面 —— 催收员应该先看到该先打的电话 -->
+        ORDER BY priority ASC, overdue_days DESC, create_time ASC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*) FROM collection_task
+        <include refid="pageWhere"/>
+    </select>
+
+    <update id="updateFollowInfo">
+        UPDATE collection_task
+        <set>
+            <if test="assignedTo != null">assigned_to = #{assignedTo},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="nextFollowDate != null">next_follow_date = #{nextFollowDate},</if>
+            <if test="promisedPayDate != null">
+                promised_pay_date = #{promisedPayDate},
+                promise_violated = 0,
+            </if>
+            <if test="promiseViolated != null">promise_violated = #{promiseViolated},</if>
+            last_follow_at = NOW(),
+        </set>
+        WHERE task_id = #{taskId}
+          AND status &lt;&gt; 'closed'
+    </update>
+
+    <update id="closeTask">
+        UPDATE collection_task
+        SET status = 'closed',
+            close_reason = #{reason},
+            closed_at = NOW()
+        WHERE task_id = #{taskId}
+          AND status &lt;&gt; 'closed'
+    </update>
+
+    <update id="closeByRepaymentId">
+        UPDATE collection_task
+        SET status = 'closed',
+            close_reason = #{reason},
+            closed_at = NOW()
+        WHERE repayment_id = #{repaymentId}
+          AND status IN ('pending', 'in_progress', 'promised')
+    </update>
+
+</mapper>
