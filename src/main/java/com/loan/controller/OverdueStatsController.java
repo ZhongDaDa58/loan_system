@@ -26,4 +26,14 @@ public class OverdueStatsController {
             @RequestParam(required = false) String endDate) {
         return overdueStatsService.getStats(startDate, endDate);
     }
+
+    @GetMapping("/level-stats")
+    @Operation(summary = "获取逾期分级看板",
+            description = "返回 M1/M2/M3 分级分布（笔数/金额/占比）与迁徙情况。"
+                    + "迁徙率为近似值，口径见返回体的 caliberNote")
+    public Result<com.loan.entity.vo.stats.OverdueLevelStatsVO> getLevelStats(
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        return overdueStatsService.getLevelStats(startDate, endDate);
+    }
 }

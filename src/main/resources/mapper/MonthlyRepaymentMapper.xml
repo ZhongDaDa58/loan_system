@@ -310,4 +310,49 @@
         ORDER BY mr.due_date DESC
     </select>
 
+    <!-- ========== 逾期分级看板（第 6 步）========== -->
+
+    <!--
+      分级分布：每个等级多少笔、多少钱。
+      金额含罚息 —— 逾期客户实际欠的是"本金利息 + 罚息"。
+      label / countRatio 由 Service 补，SQL 不管。
+    -->
+    <select id="selectOverdueLevelDistribution"
+            resultType="com.loan.entity.vo.stats.OverdueLevelStatsVO$LevelBucket">
+        SELECT
+            mr.overdue_level AS level,
+            COUNT(*) AS `count`,
+            COALESCE(SUM(mr.repayment_amount + COALESCE(mr.penalty_amount, 0)), 0) AS amount
+        FROM monthly_repayment mr
+        WHERE mr.repayment_status = 'overdue'
+          AND mr.overdue_level IS NOT NULL
+          AND mr.overdue_level IN ('M1', 'M2', 'M3')
+        GROUP BY mr.overdue_level
+        ORDER BY mr.overdue_level ASC
+    </select>
+
+    <!--
+      期内升级事件数。
+      等级只升不降 -> 期内"升到 M2"必然来自 M1、"升到 M3"必然来自 M2，事件数准确。
+      amount 字段这里没用，返回 0 占位（复用 LevelBucket 作 resultType）。
+    -->
+    <select id="selectLevelUpgradeEvents"
+            resultType="com.loan.entity.vo.stats.OverdueLevelStatsVO$LevelBucket">
+        SELECT
+            mr.overdue_level AS level,
+            COUNT(*) AS `count`,
+            0 AS amount
+        FROM monthly_repayment mr
+        WHERE mr.repayment_status = 'overdue'
+          AND mr.overdue_level IN ('M2', 'M3')
+          AND mr.overdue_level_changed_at IS NOT NULL
+        <if test="startDate != null and startDate != ''">
+            AND mr.overdue_level_changed_at &gt;= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND mr.overdue_level_changed_at &lt; DATE_ADD(#{endDate}, INTERVAL 1 DAY)
+        </if>
+        GROUP BY mr.overdue_level
+    </select>
+
 </mapper>

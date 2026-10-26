@@ -117,6 +117,24 @@ public interface MonthlyRepaymentMapper {
                                                                @Param("endDate") String endDate);
 
     /**
+     * 逾期分级分布（第 6 步看板升级）：每个等级有多少笔、多少钱。
+     *
+     * <p>只统计 {@code repayment_status='overdue'} 且等级非空的记录。
+     * 金额含罚息 —— 逾期客户实际欠的是"本金利息 + 罚息"。
+     */
+    List<com.loan.entity.vo.stats.OverdueLevelStatsVO.LevelBucket> selectOverdueLevelDistribution();
+
+    /**
+     * 期内升级事件数（第 6 步）：按期终等级统计 {@code overdue_level_changed_at} 落在期内的笔数。
+     *
+     * <p>因为<b>等级只升不降</b>，所以"期内升到 M2"必然来自 M1、"升到 M3"必然来自 M2，
+     * 事件数本身是准确的。返回的 {@code level} 是 M2 或 M3，{@code count} 是笔数。
+     */
+    List<com.loan.entity.vo.stats.OverdueLevelStatsVO.LevelBucket> selectLevelUpgradeEvents(
+            @Param("startDate") String startDate,
+            @Param("endDate") String endDate);
+
+    /**
      * 统计期内总应还款笔数（用于计算逾期率）
      */
     Long countTotalDueWithinPeriod(@Param("startDate") String startDate,
