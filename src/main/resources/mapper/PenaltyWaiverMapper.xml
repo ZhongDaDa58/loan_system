@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.loan.mapper.PenaltyWaiverMapper">
+
+    <sql id="cols">
+        id, waiver_id, user_id, repayment_id, plan_id, waived_amount, penalty_snapshot,
+        reason, status, applicant, approver, approve_remark, approved_at,
+        create_time, update_time
+    </sql>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO penalty_waiver
+            (waiver_id, user_id, repayment_id, plan_id, waived_amount, penalty_snapshot,
+             reason, status, applicant)
+        VALUES
+            (#{waiverId}, #{userId}, #{repaymentId}, #{planId}, #{waivedAmount},
+             #{penaltySnapshot}, #{reason}, 'pending', #{applicant})
+    </insert>
+
+    <select id="selectByWaiverId" resultType="com.loan.entity.PenaltyWaiver">
+        SELECT <include refid="cols"/> FROM penalty_waiver WHERE waiver_id = #{waiverId}
+    </select>
+
+    <select id="countPendingByRepaymentId" resultType="int">
+        SELECT COUNT(*) FROM penalty_waiver
+        WHERE repayment_id = #{repaymentId} AND status = 'pending'
+    </select>
+
+    <!--
+      三个 mark* 方法都是「条件 UPDATE」：WHERE status='pending'。
+      返回 0 表示已被别人处理过 —— 这是防重复审批的唯一可靠手段
+      （先 SELECT 再 UPDATE 的写法在并发下会双批）。
+    -->
+
+    <update id="markApproved">
+        UPDATE penalty_waiver
+        SET status = 'approved',
+            approver = #{approver},
+            approve_remark = #{remark},
+            approved_at = NOW()
+        WHERE waiver_id = #{waiverId}
+          AND status = 'pending'
+    </update>
+
+    <update id="markRejected">
+        UPDATE penalty_waiver
+        SET status = 'rejected',
+            approver = #{approver},
+            approve_remark = #{remark},
+            approved_at = NOW()
+        WHERE waiver_id = #{waiverId}
+          AND status = 'pending'
+    </update>
+
+    <update id="markCancelled">
+        UPDATE penalty_waiver
+        SET status = 'cancelled',
+            approve_remark = #{remark},
+            approved_at = NOW()
+        WHERE waiver_id = #{waiverId}
+          AND status = 'pending'
+          AND applicant = #{applicant}
+    </update>
+
+    <sql id="pageWhere">
+        <where>
+            <if test="status != null and status != ''">
+                AND status = #{status}
+            </if>
+            <if test="userId != null and userId != ''">
+                AND user_id = #{userId}
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectPage" resultType="com.loan.entity.PenaltyWaiver">
+        SELECT <include refid="cols"/>
+        FROM penalty_waiver
+        <include refid="pageWhere"/>
+        <!-- 待审批的排最前，让审批人先看到该处理的 -->
+        ORDER BY (status = 'pending') DESC, create_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countPage" resultType="long">
+        SELECT COUNT(*) FROM penalty_waiver
+        <include refid="pageWhere"/>
+    </select>
+
+    <!-- ===== 罚息余额操作 ===== -->
+
+    <select id="selectPenaltyAmount" resultType="java.math.BigDecimal">
+        SELECT COALESCE(penalty_amount, 0)
+        FROM monthly_repayment
+        WHERE repayment_id = #{repaymentId}
+    </select>
+
+    <!--
+      减罚息。条件带 penalty_amount >= amount：即使校验与扣减之间余额变小，
+      也不会把 penalty_amount 扣成负数。
+    -->
+    <update id="decreasePenalty">
+        UPDATE monthly_repayment
+        SET penalty_amount = penalty_amount - #{amount}
+        WHERE repayment_id = #{repaymentId}
+          AND penalty_amount &gt;= #{amount}
+    </update>
+
+</mapper>
