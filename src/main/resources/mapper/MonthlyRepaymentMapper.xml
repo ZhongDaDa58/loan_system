@@ -79,6 +79,8 @@
             mr.principal,  -- 当期本金
             mr.interest,  -- 当期利息
             mr.repayment_amount,  -- 当期总还款额
+            COALESCE(mr.penalty_amount, 0) AS penalty_amount,  -- 当期罚息（逾期后累加）
+            (mr.repayment_amount + COALESCE(mr.penalty_amount, 0)) AS total_due,  -- 应还总额
             mr.due_date,  -- 到期还款日
             mr.repayment_status,  -- 还款状态
             mr.repayment_time,  -- 实际还款时间
