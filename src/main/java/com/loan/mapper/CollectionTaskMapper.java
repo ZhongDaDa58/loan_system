@@ -70,4 +70,24 @@ public interface CollectionTaskMapper {
      */
     int closeByRepaymentId(@Param("repaymentId") String repaymentId,
                            @Param("reason") String reason);
+
+    /**
+     * 查"承诺了还款、到期却没还"的任务（承诺违约检查用）。
+     *
+     * <p>JOIN 还款明细判断是否真的还了 —— 光看 {@code promised_pay_date} 不够：
+     * 有些还款路径可能没走到 {@link #closeByRepaymentId}，任务还开着但钱已经还了。
+     */
+    List<CollectionTask> selectViolatedPromises();
+
+    /**
+     * 标记承诺违约并提升优先级（条件 UPDATE，幂等）。
+     *
+     * <p>{@code WHERE promise_violated = 0} —— 同一条任务只处理一次，
+     * 否则每天都把优先级往下降一格，很快就全变最高优先了。
+     *
+     * @param newPriority 新的优先级（1 高 / 2 中 / 3 低），由调用方按原值计算
+     * @return 1=本次标记成功；0=已被处理过或任务已关闭
+     */
+    int markPromiseViolated(@Param("taskId") String taskId,
+                            @Param("newPriority") int newPriority);
 }

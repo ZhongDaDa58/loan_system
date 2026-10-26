@@ -6,6 +6,7 @@ import com.loan.entity.vo.Result;
 import com.loan.service.CollectionRecordService;
 import com.loan.service.CollectionTaskService;
 import com.loan.service.impl.CollectionTaskGenerator;
+import com.loan.service.impl.PromisedPayViolationChecker;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
@@ -40,6 +41,9 @@ public class CollectionController {
 
     @Resource
     private CollectionTaskGenerator collectionTaskGenerator;
+
+    @Resource
+    private PromisedPayViolationChecker promisedPayViolationChecker;
 
     @GetMapping("/tasks")
     @Operation(summary = "分页查询催收任务",
@@ -153,6 +157,18 @@ public class CollectionController {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("created", created);
         data.put("message", "新建 " + created + " 个催收任务");
+        return Result.success(data);
+    }
+
+    @PostMapping("/check-violations")
+    @Operation(summary = "手动触发承诺违约检查",
+            description = "正常由每天 3:35 的定时任务执行。"
+                    + "把「承诺日已过且仍未还款」的任务标记违约、提升优先级、拉回今日待办")
+    public Result<Map<String, Object>> checkViolations() {
+        int violated = promisedPayViolationChecker.check();
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("violated", violated);
+        data.put("message", "标记 " + violated + " 条承诺违约");
         return Result.success(data);
     }
 

@@ -106,4 +106,42 @@
           AND status IN ('pending', 'in_progress', 'promised')
     </update>
 
+    <!--
+      承诺到期没还的任务。
+      JOIN 还款明细是对的：有些还款路径可能没走到 closeByRepaymentId，
+      任务还开着但钱已经还了 —— 光看 promised_pay_date 会误判成违约。
+    -->
+    <select id="selectViolatedPromises" resultType="com.loan.entity.CollectionTask">
+        SELECT t.id, t.task_id, t.user_id, t.repayment_id, t.plan_id,
+               t.overdue_level, t.overdue_days, t.priority, t.status,
+               t.assigned_to, t.next_follow_date, t.promised_pay_date,
+               t.promise_violated, t.last_follow_at, t.close_reason, t.closed_at,
+               t.create_time, t.update_time
+        FROM collection_task t
+        INNER JOIN monthly_repayment mr ON t.repayment_id = mr.repayment_id
+        WHERE t.promise_violated = 0
+          AND t.promised_pay_date IS NOT NULL
+          AND t.promised_pay_date &lt; CURDATE()
+          AND t.status IN ('pending', 'in_progress', 'promised')
+          AND mr.repayment_status IN ('unpaid', 'overdue')
+        ORDER BY t.promised_pay_date ASC
+    </select>
+
+    <!--
+      标记承诺违约 + 提优先级 + 拉回今日待办。
+      条件 promise_violated = 0 保证幂等：否则每天都会把优先级再降一格，
+      几天后所有任务都变成最高优先级，优先级就失去意义了。
+      status 改成 in_progress：承诺已经失效，重新算"跟进中"。
+    -->
+    <update id="markPromiseViolated">
+        UPDATE collection_task
+        SET promise_violated = 1,
+            priority = #{newPriority},
+            status = 'in_progress',
+            next_follow_date = CURDATE()
+        WHERE task_id = #{taskId}
+          AND promise_violated = 0
+          AND status &lt;&gt; 'closed'
+    </update>
+
 </mapper>
