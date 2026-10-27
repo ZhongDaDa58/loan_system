@@ -46,6 +46,10 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
     @Resource
     private com.loan.service.ScorecardRoutingService scorecardRoutingService;
 
+    /** 多源数据：补齐用户没填的财务信息（社保基数→月收入、征信 debt_to_income→负债率） */
+    @Resource
+    private com.loan.service.MultiSourceIngestService multiSourceIngestService;
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Result<?> createProfile(String userId, CreditProfileDTO dto) {
@@ -201,6 +205,10 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
         entity.setDependents(profile.getDependents());
         entity.setRevolvingUtil(profile.getRevolvingUtil());
 
+        // 用户没填财务信息时，用多源数据补齐（只补空值，用户填的优先）
+        // —— 社保基数 ≈ 月收入、征信 debt_to_income ≈ 负债率，这些本来就不该让用户手填
+        enrichFromMultiSource(entity, dto);
+
         try {
             // 统一评分口径：优先「多源特征 + 多模型 v4」，覆盖不足时回落单模型 v3 —— 保证档案分与申请分一致
             com.loan.service.ScorecardRoutingService.ScoreOutcome outcome =
@@ -217,59 +225,97 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
     }
 
     /**
-     * 评分前置校验：缺字段就直接报错，<b>不落库</b>。
+     * 评分前置校验：只校验<b>无法自动获得</b>的字段。
      *
-     * <p>为什么要在评分之前先查一遍：{@code transformToUserProfile} 里只有
-     * {@code calculateAge} 会抛异常（出生日期为空），其它特征缺失是静默取 0 ——
-     * 会出现"能建档但分数毫无意义"的情况。这里把<b>评分真正需要的</b>信息列清楚，
-     * 让用户在提交那一刻就知道缺什么，而不是建完档案去申请才发现没分。
+     * <p><b>为什么不校验财务信息</b>：项目有多源数据融合（社保 `social_base` = 月收入、
+     * 征信 `debt_to_income` = 负债率），模型特征集里本来就有这些键
+     * （见 {@code MultiSourceIngestServiceImpl.RANGE_RULES}），
+     * {@code buildMultiSourceFeatures} 还会用多源值<b>覆盖</b>档案字段。
+     * 让用户再手填一遍纯属重复劳动 —— 实测陈静（13800138005）六个源齐全
+     * （社保基数 19600、负债率 0.0571），却因为强制要求手填财务信息而卡住。
      *
-     * <p>出生日期不算必填：会自动从身份证推导（见 {@link #fillBirthDateFromIdCard}）。
+     * <p>真正自动不了的只有出生日期，而它还能从身份证推 —— 所以这里通常不会拦人，
+     * 只在身份证也不合法时才报错。
      */
     private void validateScoringRequirements(CreditProfileDTO dto) {
-        java.util.List<String> missing = new java.util.ArrayList<>();
-
-        // 出生日期：没填、且身份证也推不出来，才算缺
         if (dto.getBirthDate() == null
                 && com.loan.util.IdCardValidator.deriveBirthDate(dto.getIdCard()) == null) {
-            missing.add("出生日期（填身份证号可自动推导，或直接选择生日）");
-        }
-
-        // 财务信息：负债率 / 授信额度 / 循环额度使用率 全部来自这里
-        if (dto.getFinancialInfo() == null) {
-            missing.add("财务信息（收入来源、资产、负债）");
-        } else {
-            java.math.BigDecimal income = monthlyIncomeOf(dto);
-            if (income == null || income.signum() <= 0) {
-                missing.add("月收入（职业信息中的月薪，或财务信息中的收入来源）");
-            }
-        }
-
-        if (!missing.isEmpty()) {
             throw new BusinessException(400,
-                    "评分需要以下信息，请补全后再提交：" + String.join("、", missing));
+                    "请填写有效的身份证号（用于自动获取出生日期），或直接选择出生日期");
         }
     }
 
-    /** 月收入：职业月薪 + 职业附加收入 + 财务其它收入（与 FeatureTransformationServiceImpl 口径一致） */
-    private java.math.BigDecimal monthlyIncomeOf(CreditProfileDTO dto) {
-        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
-        if (dto.getEmploymentInfo() != null) {
-            if (dto.getEmploymentInfo().getMonthlySalary() != null) {
-                total = total.add(dto.getEmploymentInfo().getMonthlySalary());
+    /**
+     * 用多源数据补齐档案里为空的财务字段（<b>只补空值，用户填的优先</b>）。
+     *
+     * <p>多源数据能提供的对应关系：
+     * <ul>
+     *   <li>社保 {@code social_base}（缴费基数）→ 月收入 {@code monthlyIncome}</li>
+     *   <li>征信 {@code debt_to_income} → 负债率 {@code debtRatio}</li>
+     * </ul>
+     *
+     * <p><b>为什么在这里补而不是让用户填</b>：这些数据在用户授权后由
+     * {@code MultiSourceSyncService} 自动同步，再让用户手填一遍既是重复劳动，
+     * 也可能和真实数据对不上。模型侧本来就是多源优先
+     * （{@code buildMultiSourceFeatures} 用多源值覆盖档案字段），
+     * 这里补只是为了让档案页面能看到有意义的数字。
+     *
+     * <p>失败只打日志，不影响建档 —— 多源数据缺失是正常情况（用户未授权/未同步）。
+     */
+    private void enrichFromMultiSource(UserCreditProfile entity, CreditProfileDTO dto) {
+        try {
+            java.util.Map<String, Object> snapshot =
+                    multiSourceIngestService.featureSnapshot(entity.getUserId());
+            Object raw = snapshot == null ? null : snapshot.get("features");
+            if (!(raw instanceof java.util.Map<?, ?> features)) {
+                return;
             }
-            if (dto.getEmploymentInfo().getAdditionalIncome() != null) {
-                total = total.add(dto.getEmploymentInfo().getAdditionalIncome());
-            }
-        }
-        if (dto.getFinancialInfo() != null && dto.getFinancialInfo().getIncomeSources() != null) {
-            for (CreditProfileDTO.IncomeSource src : dto.getFinancialInfo().getIncomeSources()) {
-                if (src.getMonthlyAmount() != null) {
-                    total = total.add(src.getMonthlyAmount());
+
+            // 月收入：0 一定不合理（有工作就有收入），用社保基数补
+            if (entity.getMonthlyIncome() == null || entity.getMonthlyIncome().signum() <= 0) {
+                BigDecimal socialBase = toDecimal(features.get("social_base"));
+                if (socialBase != null && socialBase.signum() > 0) {
+                    entity.setMonthlyIncome(socialBase);
+                    log.info("月收入为空，已用社保缴费基数补齐: userId={}, monthlyIncome={}",
+                            entity.getUserId(), socialBase);
                 }
             }
+
+            // 负债率：⚠️ 只在"用户没填财务信息"时补 ——
+            // calculateDebtRatio(null) 返回的是 0 而不是 null，
+            // 而"用户真的无负债"和"用户没填"都表现为 0，无法区分。
+            // 所以用 dto.financialInfo 是否为空来判定：没填才用多源覆盖，填了就尊重用户输入。
+            boolean userProvidedFinancials = dto != null && dto.getFinancialInfo() != null;
+            if (!userProvidedFinancials
+                    && (entity.getDebtRatio() == null || entity.getDebtRatio().signum() <= 0)) {
+                BigDecimal dti = toDecimal(features.get("debt_to_income"));
+                if (dti != null && dti.signum() > 0) {
+                    entity.setDebtRatio(dti);
+                    log.info("负债率为空，已用征信 debt_to_income 补齐: userId={}, debtRatio={}",
+                            entity.getUserId(), dti);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("多源财务信息补齐失败（不影响建档）: userId={}, 原因={}",
+                    entity.getUserId(), e.getMessage());
         }
-        return total;
+    }
+
+    private static BigDecimal toDecimal(Object v) {
+        if (v == null) {
+            return null;
+        }
+        if (v instanceof BigDecimal bd) {
+            return bd;
+        }
+        if (v instanceof Number n) {
+            return BigDecimal.valueOf(n.doubleValue());
+        }
+        try {
+            return new BigDecimal(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     /** 生日为空时，从身份证号推导后回填 —— 身份证本来就有生日，不该让用户填两遍 */
