@@ -208,8 +208,16 @@ public class ApplicationEligibilityChecker {
 
         // 从信用档案读取个人特征数据（无需重复填写）
         UserCreditProfile creditProfile = userCreditProfileMapper.selectByUserId(userId);
-        if (creditProfile == null || creditProfile.getCreditScore() == null) {
+        // ⚠️ 这两种情况必须分开提示：
+        //    「没有档案」和「有档案但没分数」是两回事。
+        //    以前共用一句"请先创建信用档案"，用户明明建了却被这么提示，
+        //    再去创建又撞"您已创建信用档案"，形成死循环（2026-10-27 陈静遇到的就是这个）。
+        if (creditProfile == null) {
             throw new BusinessException(400, "请先创建信用档案，完善个人信息后再申请贷款");
+        }
+        if (creditProfile.getCreditScore() == null) {
+            throw new BusinessException(400,
+                    "信用档案尚未完成评分，请补全财务信息（收入来源、资产、负债）后重新保存，再申请贷款");
         }
 
         // 阶段四 4.5：改用 MapStruct 生成的转换（编译期生成，字段名不一致会编译报错）

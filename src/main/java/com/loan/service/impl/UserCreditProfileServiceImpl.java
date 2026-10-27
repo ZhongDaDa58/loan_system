@@ -9,6 +9,7 @@ import com.loan.entity.dto.FeatureTransformationResultDTO;
 import com.loan.entity.dto.UserBasicInfoDTO;
 import com.loan.entity.dto.UserProfileDTO;
 import com.loan.entity.vo.Result;
+import com.loan.exception.BusinessException;
 import com.loan.mapper.UserCreditProfileMapper;
 import com.loan.service.FeatureTransformationService;
 import com.loan.service.ScorecardService;
@@ -53,12 +54,19 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
             return Result.error(400, "您已创建信用档案，如需修改请使用更新接口");
         }
 
+        // ① 生日缺失时从身份证推（身份证必有生日，不该让用户填两遍）
+        fillBirthDateFromIdCard(dto);
+        // ② 评分必需字段前置校验 —— 缺就报错，不落库
+        //    这样才不会出现「档案建了但没分数」：建成功 = 一定有分数
+        validateScoringRequirements(dto);
+
         UserCreditProfile profile = new UserCreditProfile();
         profile.setUserId(userId);
         copyDtoToEntity(dto, profile);
         profile.setCreateTime(new Date());
         profile.setUpdateTime(new Date());
 
+        // 评分失败会抛异常 -> 事务回滚 -> 档案不落库（与「创建成功」绑定）
         computeFeatures(profile, dto);
 
         profileMapper.insert(profile);
@@ -73,9 +81,14 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
             return Result.error(400, "请先创建信用档案");
         }
 
+        // 与 createProfile 保持同一套规则：出生日期可推导，评分必需字段缺就报错
+        fillBirthDateFromIdCard(dto);
+        validateScoringRequirements(dto);
+
         copyDtoToEntity(dto, existing);
         existing.setUpdateTime(new Date());
 
+        // 评分失败抛异常 -> 回滚 -> 档案不会被改成"有档案无分"的状态
         computeFeatures(existing, dto);
 
         profileMapper.update(existing);
@@ -169,8 +182,15 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
                 featureTransformationService.transformToUserProfile(basicInfo);
 
         if (result.getIsValid() == null || !result.getIsValid()) {
-            log.warn("⚠️ 特征转换未通过，未生成评分: userId={}", entity.getUserId());
-            return;
+            // ⚠️ 这里以前是 log.warn + return —— 会留下「档案建了但 credit_score 是 NULL」的中间态。
+            //    用户去申请时被告知"请先创建信用档案"（其实档案在、只是没分），
+            //    再去创建又撞"您已创建信用档案"，形成死循环（2026-10-27 陈静就是这个问题）。
+            //    现在改为抛异常 -> 事务回滚 -> 档案不落库，保证「有档案必有分数」。
+            String reason = result.getErrorMessage() != null && !result.getErrorMessage().isBlank()
+                    ? result.getErrorMessage()
+                    : "请检查出生日期、财务信息、职业信息是否完整";
+            log.warn("特征转换未通过，拒绝落库: userId={}, reason={}", entity.getUserId(), reason);
+            throw new BusinessException(400, "信用档案评分失败：" + reason);
         }
 
         UserProfileDTO profile = result.getUserProfile();
@@ -190,8 +210,79 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
                     entity.getUserId(), outcome.score(), outcome.modelKey(), outcome.source(),
                     outcome.missingFeatures(), outcome.requiredFeatures());
         } catch (Exception e) {
-            log.warn("⚠️ 评分失败（档案已保存，信用分为空）: userId={}, 原因={}",
-                    entity.getUserId(), e.getMessage());
+            // 以前 catch 后只打日志，档案照样落库、分数留空 —— 同样是"档案无分"的来源
+            log.warn("评分失败，拒绝落库: userId={}, 原因={}", entity.getUserId(), e.getMessage());
+            throw new BusinessException(400, "信用档案评分失败：" + e.getMessage());
+        }
+    }
+
+    /**
+     * 评分前置校验：缺字段就直接报错，<b>不落库</b>。
+     *
+     * <p>为什么要在评分之前先查一遍：{@code transformToUserProfile} 里只有
+     * {@code calculateAge} 会抛异常（出生日期为空），其它特征缺失是静默取 0 ——
+     * 会出现"能建档但分数毫无意义"的情况。这里把<b>评分真正需要的</b>信息列清楚，
+     * 让用户在提交那一刻就知道缺什么，而不是建完档案去申请才发现没分。
+     *
+     * <p>出生日期不算必填：会自动从身份证推导（见 {@link #fillBirthDateFromIdCard}）。
+     */
+    private void validateScoringRequirements(CreditProfileDTO dto) {
+        java.util.List<String> missing = new java.util.ArrayList<>();
+
+        // 出生日期：没填、且身份证也推不出来，才算缺
+        if (dto.getBirthDate() == null
+                && com.loan.util.IdCardValidator.deriveBirthDate(dto.getIdCard()) == null) {
+            missing.add("出生日期（填身份证号可自动推导，或直接选择生日）");
+        }
+
+        // 财务信息：负债率 / 授信额度 / 循环额度使用率 全部来自这里
+        if (dto.getFinancialInfo() == null) {
+            missing.add("财务信息（收入来源、资产、负债）");
+        } else {
+            java.math.BigDecimal income = monthlyIncomeOf(dto);
+            if (income == null || income.signum() <= 0) {
+                missing.add("月收入（职业信息中的月薪，或财务信息中的收入来源）");
+            }
+        }
+
+        if (!missing.isEmpty()) {
+            throw new BusinessException(400,
+                    "评分需要以下信息，请补全后再提交：" + String.join("、", missing));
+        }
+    }
+
+    /** 月收入：职业月薪 + 职业附加收入 + 财务其它收入（与 FeatureTransformationServiceImpl 口径一致） */
+    private java.math.BigDecimal monthlyIncomeOf(CreditProfileDTO dto) {
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        if (dto.getEmploymentInfo() != null) {
+            if (dto.getEmploymentInfo().getMonthlySalary() != null) {
+                total = total.add(dto.getEmploymentInfo().getMonthlySalary());
+            }
+            if (dto.getEmploymentInfo().getAdditionalIncome() != null) {
+                total = total.add(dto.getEmploymentInfo().getAdditionalIncome());
+            }
+        }
+        if (dto.getFinancialInfo() != null && dto.getFinancialInfo().getIncomeSources() != null) {
+            for (CreditProfileDTO.IncomeSource src : dto.getFinancialInfo().getIncomeSources()) {
+                if (src.getMonthlyAmount() != null) {
+                    total = total.add(src.getMonthlyAmount());
+                }
+            }
+        }
+        return total;
+    }
+
+    /** 生日为空时，从身份证号推导后回填 —— 身份证本来就有生日，不该让用户填两遍 */
+    private void fillBirthDateFromIdCard(CreditProfileDTO dto) {
+        if (dto.getBirthDate() == null) {
+            java.time.LocalDate derived = com.loan.util.IdCardValidator.deriveBirthDate(dto.getIdCard());
+            if (derived != null) {
+                dto.setBirthDate(derived);
+                log.info("出生日期为空，已从身份证推导: idCard={}****, birthDate={}",
+                        dto.getIdCard() != null && dto.getIdCard().length() >= 6
+                                ? dto.getIdCard().substring(0, 6) : "?",
+                        derived);
+            }
         }
     }
 
