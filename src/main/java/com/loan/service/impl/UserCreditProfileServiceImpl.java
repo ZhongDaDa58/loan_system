@@ -123,6 +123,10 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
             return Result.error(404, "请先创建信用档案");
         }
 
+        // 用多源数据补齐财务字段（rescore 没有 dto，按"用户没填"处理 ——
+        // 重新评分的语义就是"以最新数据重算"，多源比手填更可信）
+        enrichFromMultiSource(profile, null);
+
         UserProfileDTO userProfile = new UserProfileDTO();
         userProfile.setAge(profile.getAge());
         userProfile.setDebtRatio(profile.getDebtRatio());
@@ -139,9 +143,16 @@ public class UserCreditProfileServiceImpl implements UserCreditProfileService {
             com.loan.service.ScorecardRoutingService.ScoreOutcome outcome =
                     scorecardRoutingService.score(userId, userProfile);
             Integer score = outcome.score();
-            profileMapper.updateScore(userId, score);
-            log.info("✅ 重新评分: userId={} score={} model={} source={}",
-                    userId, score, outcome.modelKey(), outcome.source());
+
+            // 整条更新（不只 updateScore）：否则多源补齐的 monthlyIncome / debtRatio
+            // 只进了模型、没落到档案里，页面仍显示 0
+            profile.setCreditScore(score);
+            profile.setUpdateTime(new Date());
+            profileMapper.update(profile);
+
+            log.info("✅ 重新评分: userId={} score={} model={} source={}, 月收入={} 负债率={}",
+                    userId, score, outcome.modelKey(), outcome.source(),
+                    profile.getMonthlyIncome(), profile.getDebtRatio());
             return Result.success("重新评分完成，当前信用分：" + score);
         } catch (Exception e) {
             log.warn("⚠️ 重新评分失败: userId={}, 原因={}", userId, e.getMessage());
