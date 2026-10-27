@@ -22,7 +22,7 @@
 # =============================================================================
 
 param(
-    [string]$BaseUrl = "http://127.0.0.1:8090",
+    [string]$BaseUrl = "http://127.0.0.1:8080",
     [ValidateSet('A','B','C','D','All')]
     [string]$Scenario = "All",
     [string]$Phone = "13900009001",
