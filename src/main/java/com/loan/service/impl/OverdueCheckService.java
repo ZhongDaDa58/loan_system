@@ -105,6 +105,10 @@ public class OverdueCheckService {
     @Resource
     private OverduePenaltyCalculator penaltyCalculator;
 
+    /** M3 逾期自动拉黑：观察期与幂等都在那个类里 */
+    @Resource
+    private OverdueBlacklistAutoEnroller overdueBlacklistAutoEnroller;
+
     /**
      * 定时任务：每天凌晨 2 点执行逾期检查。
      *
@@ -124,6 +128,8 @@ public class OverdueCheckService {
         int notified = 0;
         // 用户维度扣分：先收集"每个用户当前的最高逾期等级"，循环结束后统一扣（V7）
         Map<String, String> userWorstLevel = new HashMap<>();
+        // 用户 -> 触发 M3 的期次（自动拉黑时写进 related_repayment_id，便于事后追溯）
+        Map<String, String> m3TriggerRepaymentId = new HashMap<>();
 
         for (MonthlyRepayment r : candidates) {
             LocalDate due = toLocalDate(r.getDueDate());
@@ -172,6 +178,10 @@ public class OverdueCheckService {
             if (uid != null) {
                 userWorstLevel.merge(uid, newLevel,
                         (a, b) -> levelRank(a) >= levelRank(b) ? a : b);
+                // 顺带记下「触发 M3 的那一期」，供自动拉黑做追溯（取第一条即可）
+                if ("M3".equals(newLevel)) {
+                    m3TriggerRepaymentId.putIfAbsent(uid, r.getRepaymentId());
+                }
             }
         }
 
@@ -185,8 +195,18 @@ public class OverdueCheckService {
             }
         });
 
-        log.info("逾期检查完成：扫描 {} 条，更新 {} 条，发送通知 {} 条，涉及 {} 个用户",
-                candidates.size(), updated, notified, userWorstLevel.size());
+        // M3 自动加入黑名单（观察期默认 6 个月；幂等靠 insertIfAbsent，重复扫描不会重复插入）
+        int blacklisted = 0;
+        for (var entry : userWorstLevel.entrySet()) {
+            if ("M3".equals(entry.getValue())
+                    && overdueBlacklistAutoEnroller.enrollIfM3(
+                            entry.getKey(), m3TriggerRepaymentId.get(entry.getKey()))) {
+                blacklisted++;
+            }
+        }
+
+        log.info("逾期检查完成：扫描 {} 条，更新 {} 条，发送通知 {} 条，涉及 {} 个用户，M3 新增拉黑 {} 人",
+                candidates.size(), updated, notified, userWorstLevel.size(), blacklisted);
     }
 
     /** 等级排序，用于取用户的最高逾期等级 */

@@ -463,4 +463,91 @@ class OverdueCheckIntegrationTest {
                 .isGreaterThan(java.math.BigDecimal.ZERO)
                 .isLessThan(new java.math.BigDecimal("5"));
     }
+
+    // ==================== M3 自动进入黑名单 ====================
+
+    /** 该用户当前的生效黑名单记录（没有则 null） */
+    private com.loan.entity.OverdueBlacklist activeBlacklist(String userId) {
+        return jdbc.query("SELECT * FROM overdue_blacklist WHERE user_id = ? AND status = 'active'",
+                        (rs, i) -> {
+                            com.loan.entity.OverdueBlacklist b = new com.loan.entity.OverdueBlacklist();
+                            b.setUserId(rs.getString("user_id"));
+                            b.setReason(rs.getString("reason"));
+                            b.setOverdueLevel(rs.getString("overdue_level"));
+                            b.setRelatedRepaymentId(rs.getString("related_repayment_id"));
+                            b.setOperatorName(rs.getString("operator_name"));
+                            b.setExpireAt(rs.getTimestamp("expire_at"));
+                            return b;
+                        }, userId)
+                .stream().findFirst().orElse(null);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ M3 逾期 -> 自动加入黑名单（观察期默认 6 个月）")
+    void m3AutoEnrollsBlacklist() {
+        // seed 里有 M1(5天)/M2(40天)/M3(70天)，最高等级是 M3
+        overdueCheckService.manualCheckOverdue();
+
+        com.loan.entity.OverdueBlacklist b = activeBlacklist(USER_ID);
+        assertThat(b).as("M3 应被自动拉黑").isNotNull();
+        assertThat(b.getOverdueLevel()).isEqualTo("M3");
+        assertThat(b.getRelatedRepaymentId())
+                .as("要记下触发 M3 的是哪一期，便于追溯")
+                .isEqualTo("it-ovd-70");
+        assertThat(b.getOperatorName())
+                .as("操作人是 SYSTEM_AUTO_M3，和人工操作区分开")
+                .isEqualTo("SYSTEM_AUTO_M3");
+        assertThat(b.getExpireAt())
+                .as("观察期默认 6 个月，不是永久")
+                .isNotNull();
+        assertThat(b.getReason()).contains("M3");
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 只有 M1/M2 时不会被拉黑")
+    void lessThanM3DoesNotEnroll() {
+        jdbc.update("DELETE FROM monthly_repayment WHERE repayment_id = 'it-ovd-70'");
+
+        overdueCheckService.manualCheckOverdue();
+
+        assertThat(activeBlacklist(USER_ID))
+                .as("M1/M2 不拉黑（M2 已经在准入层拦着了）")
+                .isNull();
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 重复扫描不会重复拉黑（幂等）")
+    void autoEnrollIsIdempotent() {
+        overdueCheckService.manualCheckOverdue();
+        overdueCheckService.manualCheckOverdue();
+        overdueCheckService.manualCheckOverdue();
+
+        Integer cnt = jdbc.queryForObject(
+                "SELECT COUNT(*) FROM overdue_blacklist WHERE user_id = ?", Integer.class, USER_ID);
+        assertThat(cnt)
+                .as("每天扫描都命中 M3，但只能有一条记录")
+                .isEqualTo(1);
+    }
+
+    @Test
+    @Transactional
+    @DisplayName("★ 已有生效黑名单时不覆盖（人工加的原因/期限保持不变）")
+    void doesNotOverwriteExistingBlacklist() {
+        jdbc.update("INSERT INTO overdue_blacklist (user_id, reason, overdue_level, status, "
+                + "effective_at, expire_at, operator_name) "
+                + "VALUES (?, '人工加：协商还款违约', 'M3', 'active', NOW(), "
+                + "DATE_ADD(NOW(), INTERVAL 365 DAY), 'manager-01')", USER_ID);
+
+        overdueCheckService.manualCheckOverdue();
+
+        com.loan.entity.OverdueBlacklist b = activeBlacklist(USER_ID);
+        assertThat(b).isNotNull();
+        assertThat(b.getReason())
+                .as("不能覆盖人工加的原因")
+                .isEqualTo("人工加：协商还款违约");
+        assertThat(b.getOperatorName()).isEqualTo("manager-01");
+    }
 }
